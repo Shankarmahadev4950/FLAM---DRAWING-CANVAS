@@ -1,8 +1,8 @@
 class RealtimeCommunicationClient {
-    constructor(serverUrlString) {
-        console.log('Creating socket connection to:', serverUrlString);
-        
-        this.socketInstance = io(serverUrlString, {
+    constructor(serverUrl = '') {
+        // Use current origin if no server URL provided (for deployed environment)
+        const url = serverUrl || window.location.origin;
+        this.socketInstance = io(url, {
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
@@ -10,9 +10,11 @@ class RealtimeCommunicationClient {
         });
 
         this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
+
         this.setupConnectionHandlers();
-        
-        console.log('RealtimeCommunicationClient initialized with ID:', this.uniqueUserIdentifier);
+        this.setupUserCountListener();
+
+        console.log("RealtimeCommunicationClient initialized with user ID:", this.uniqueUserIdentifier);
     }
 
     generateUniqueUserIdentifier() {
@@ -20,79 +22,87 @@ class RealtimeCommunicationClient {
     }
 
     setupConnectionHandlers() {
-        this.socketInstance.on('connect', () => {
-            console.log('✅ Connected to server');
-            // Automatically join room on connection
-            this.socketInstance.emit('join', {
-                userId: this.uniqueUserIdentifier
-            });
+        this.socketInstance.on("connect", () => {
+            console.log("Connected to WebSocket Server ✅");
         });
 
-        this.socketInstance.on('disconnect', () => {
-            console.log('❌ Disconnected from server');
+        this.socketInstance.on("disconnect", () => {
+            console.log("Disconnected from WebSocket Server ❌");
         });
 
-        this.socketInstance.on('connect_error', (errorObject) => {
-            console.error('🔴 Connection error:', errorObject);
-        });
-
-        // Listen for user count updates
-        this.socketInstance.on('user-count', (count) => {
-            console.log('👥 User count updated:', count);
-            this.updateUserCount(count);
+        this.socketInstance.on("connect_error", (errorObject) => {
+            console.error("WebSocket Connection Error:", errorObject);
         });
     }
 
-    updateUserCount(count) {
-        // Update multiple possible elements
-        const userCountElement = document.getElementById('user-count');
-        if (userCountElement) {
-            userCountElement.textContent = count;
-        }
-
-        const onlineCountElement = document.querySelector('.online-count');
-        if (onlineCountElement) {
-            onlineCountElement.textContent = `${count} Online`;
-        }
-
-        const statusElement = document.querySelector('.status');
-        if (statusElement) {
-            statusElement.textContent = count > 1 ? `${count} users online` : '1 user online';
-        }
-    }
-
-    registerEventListener(eventName, callbackFunction) {
-        console.log('Registering listener for:', eventName);
-        this.socketInstance.on(eventName, callbackFunction);
-    }
-
-    emitEventToServer(eventName, dataPayload) {
-        console.log('Emitting event:', eventName);
-        this.socketInstance.emit(eventName, dataPayload);
-    }
-
-    emitDrawStartEvent(drawingData) {
-        console.log('Draw start event:', drawingData);
-        this.socketInstance.emit('draw-start', {
-            ...drawingData,
-            userId: this.uniqueUserIdentifier
+    setupUserCountListener() {
+        this.socketInstance.on("user-count", (count) => {
+            const countElement = document.getElementById("user-count");
+            if (countElement) {
+                countElement.innerText = count;
+            }
+            console.log("Active Users Connected:", count);
         });
     }
 
-    emitDrawMoveEvent(pointData) {
-        this.socketInstance.emit('draw-move', pointData);
+    registerEventListener(eventNameToListen, callbackFunction) {
+        this.socketInstance.on(eventNameToListen, callbackFunction);
     }
 
-    emitDrawEndEvent(strokeData) {
-        console.log('Draw end event:', strokeData);
-        this.socketInstance.emit('draw-end', strokeData);
+    emitEventToServer(eventNameToEmit, eventDataObject) {
+        this.socketInstance.emit(eventNameToEmit, eventDataObject);
+    }
+
+    getUserIdentifier() {
+        return this.uniqueUserIdentifier;
     }
 
     isSocketConnected() {
         return this.socketInstance.connected;
     }
 
-    getUserIdentifier() {
-        return this.uniqueUserIdentifier;
+    emitDrawStartEvent(operationDataObject) {
+        this.emitEventToServer("draw-start", { 
+            ...operationDataObject, 
+            userId: this.uniqueUserIdentifier 
+        });
+    }
+
+    emitDrawMoveEvent(pointsDataObject) {
+        this.emitEventToServer("draw-move", {
+            ...pointsDataObject,
+            userId: this.uniqueUserIdentifier
+        });
+    }
+
+    emitDrawEndEvent() {
+        this.emitEventToServer("draw-end", { 
+            userId: this.uniqueUserIdentifier 
+        });
+    }
+
+    emitCursorPositionEvent(positionDataObject) {
+        this.emitEventToServer("cursor-move", { 
+            ...positionDataObject, 
+            userId: this.uniqueUserIdentifier 
+        });
+    }
+
+    emitUndoActionEvent() {
+        this.emitEventToServer("undo", { 
+            userId: this.uniqueUserIdentifier 
+        });
+    }
+
+    emitRedoActionEvent() {
+        this.emitEventToServer("redo", { 
+            userId: this.uniqueUserIdentifier 
+        });
+    }
+
+    emitClearCanvasEvent() {
+        this.emitEventToServer("clear-all", { 
+            userId: this.uniqueUserIdentifier 
+        });
     }
 }
