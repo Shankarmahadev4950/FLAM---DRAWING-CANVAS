@@ -1,0 +1,17 @@
+{
+  "name": "collaborative-drawing",
+  "version": "1.0.0",
+  "description": "Real-time collaborative drawing application with global undo/redo",
+  "private": true,
+  "scripts": {
+    "server": "cd server && npm install && npm start",
+    "client": "cd client && python -m http.server 5500",
+    "dev:server": "cd server && npm install && npm start",
+    "dev:client:python": "cd client && python -m http.server 5500",
+    "dev:client:node": "cd client && npx http-server -p 5500",
+    "install:all": "cd server && npm install && echo 'Installation complete!'"
+  },
+  "keywords": ["collaborative", "drawing", "canvas", "websocket", "socket.io", "real-time"],
+  "author": "",
+  "license": "MIT"
+}
