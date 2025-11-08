@@ -1,9 +1,14 @@
-const express = require('express');
-const http = require('http');
-const { Server: SocketIO } = require('socket.io');
-const cors = require('cors');
-const path = require('path');
-const SocketManager = require('./SocketManager');
+import express from 'express';
+import http from 'http';
+import { Server as SocketIO } from 'socket.io';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import SocketManager from './SocketManager.js';
+
+// ES6 equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
@@ -87,7 +92,6 @@ app.get('/status', (req, res) => {
 
 // Room information endpoint
 app.get('/api/rooms', (req, res) => {
-    // This would require exposing room information from SocketManager
     const roomsInfo = {
         default: {
             users: socketManager.getUserCount ? socketManager.getUserCount() : 0,
@@ -200,16 +204,4 @@ server.on('listening', () => {
 });
 
 // Export for testing purposes
-module.exports = { 
-    app, 
-    server, 
-    io, 
-    socketManager,
-    // Helper method for testing
-    getServerStatus: () => ({
-        port: PORT,
-        host: HOST,
-        connections: io.engine.clientsCount,
-        uptime: process.uptime()
-    })
-};
+export { app, server, io, socketManager };
