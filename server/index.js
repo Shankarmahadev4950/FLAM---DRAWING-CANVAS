@@ -1,18 +1,13 @@
-import express from 'express';
-import http from 'http';
-import { Server as SocketIO } from 'socket.io';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// ES6 equivalent of __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const express = require('express');
+const http = require('http');
+const { Server: SocketIO } = require('socket.io');
+const cors = require('cors');
+const path = require('path');
+const SocketManager = require('./SocketManager');
 
 const app = express();
 const server = http.createServer(app);
 
-// CORS configuration
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST'],
@@ -22,7 +17,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
-// Socket.IO configuration
 const io = new SocketIO(server, {
     cors: {
         origin: '*',
@@ -31,8 +25,6 @@ const io = new SocketIO(server, {
     }
 });
 
-// Import and initialize SocketManager
-const SocketManager = (await import('./SocketManager.js')).default;
 const socketManager = new SocketManager(io);
 
 app.get('/', (req, res) => {
