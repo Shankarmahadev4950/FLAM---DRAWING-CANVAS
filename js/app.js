@@ -67,7 +67,9 @@ client.registerEventListener("user-count", (count) => {
     }
 
     calculateAndSetCanvasDimensions();
-
+client.registerEventListener("connect", () => {
+    client.emitEventToServer("join", { userId: client.getUserIdentifier() });
+});
     function saveCurrentDrawingState() {
         const currentCanvasState = canvasElement.toDataURL();
         drawingHistoryStack.push(currentCanvasState);
