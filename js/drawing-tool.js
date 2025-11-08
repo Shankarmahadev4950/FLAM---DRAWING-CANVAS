@@ -1,214 +1,108 @@
-class DrawingTool {
-    constructor(ctx, canvas, socketClient) {
+class DrawingToolManager {
+    constructor(ctx, canvas) {
         this.ctx = ctx;
         this.canvas = canvas;
-        this.socketClient = socketClient;
-        this.currentTool = 'brush';
-        this.isDrawing = false;
-        this.startX = 0;
-        this.startY = 0;
-        this.lastX = 0;
-        this.lastY = 0;
-        this.color = '#000000';
-        this.width = 3;
-        this.imageData = null;
-        this.currentStroke = [];
+        this.isCurrentlyDrawing = false;
+        this.activeToolName = 'brush';
+        this.currentDrawingColor = '#000000';
+        this.currentBrushWidth = 3;
+        this.drawingStartPositionX = 0;
+        this.drawingStartPositionY = 0;
+        this.lastRecordedPositionX = 0;
+        this.lastRecordedPositionY = 0;
     }
 
-    setTool(tool) {
-        this.currentTool = tool;
-        console.log('Tool changed to:', tool);
-        if (tool === 'text') {
-            this.canvas.style.cursor = 'text';
-        } else if (tool === 'eraser') {
-            this.canvas.style.cursor = 'grab';
+    switchToTool(toolNameToSelect) {
+        this.activeToolName = toolNameToSelect;
+        
+        // Update cursor based on tool
+        if (toolNameToSelect === 'eraser') {
+            this.canvas.style.cursor = 'crosshair';
         } else {
             this.canvas.style.cursor = 'crosshair';
         }
     }
 
-    setColor(color) {
-        this.color = color;
+    setDrawingColor(colorValue) {
+        this.currentDrawingColor = colorValue;
     }
 
-    setWidth(width) {
-        this.width = width;
+    setBrushWidth(widthValue) {
+        this.currentBrushWidth = widthValue;
     }
 
-    startDrawing(x, y) {
-        this.isDrawing = true;
-        this.startX = x;
-        this.startY = y;
-        this.lastX = x;
-        this.lastY = y;
-        this.currentStroke = [];
+    initiateDrawing(startX, startY) {
+        this.isCurrentlyDrawing = true;
+        this.drawingStartPositionX = startX;
+        this.drawingStartPositionY = startY;
+        this.lastRecordedPositionX = startX;
+        this.lastRecordedPositionY = startY;
 
-        // Emit draw-start event to server
-        if (this.socketClient && this.socketClient.isConnected()) {
-            this.socketClient.emit('draw-start', {
-                tool: this.currentTool,
-                x: x,
-                y: y,
-                color: this.color,
-                width: this.width
-            });
+        this.ctx.beginPath();
+        this.ctx.moveTo(startX, startY);
+        
+        // Set drawing styles
+        if (this.activeToolName === 'eraser') {
+            this.ctx.globalCompositeOperation = 'destination-out';
+        } else {
+            this.ctx.globalCompositeOperation = 'source-over';
+            this.ctx.strokeStyle = this.currentDrawingColor;
         }
-
-        if (this.currentTool === 'line' || this.currentTool === 'rectangle' || this.currentTool === 'circle') {
-            this.imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-        }
-    }
-
-    draw(x, y) {
-        if (!this.isDrawing) return;
-
-        if (this.currentTool === 'brush') {
-            this.drawBrush(x, y);
-        } else if (this.currentTool === 'eraser') {
-            this.drawEraser(x, y);
-        } else if (this.currentTool === 'line') {
-            this.previewLine(x, y);
-        } else if (this.currentTool === 'rectangle') {
-            this.previewRectangle(x, y);
-        } else if (this.currentTool === 'circle') {
-            this.previewCircle(x, y);
-        }
-
-        // Collect stroke points
-        this.currentStroke.push({ x, y });
-
-        // Emit draw-move event to server
-        if (this.socketClient && this.socketClient.isConnected()) {
-            this.socketClient.emit('draw-move', {
-                point: { x, y }
-            });
-        }
-    }
-
-    endDrawing() {
-        if (!this.isDrawing) return;
-        this.isDrawing = false;
-
-        if (this.currentTool === 'line') {
-            this.finalizeLine();
-        } else if (this.currentTool === 'rectangle') {
-            this.finalizeRectangle();
-        } else if (this.currentTool === 'circle') {
-            this.finalizeCircle();
-        }
-
-        // Emit draw-end event with complete stroke
-        if (this.socketClient && this.socketClient.isConnected()) {
-            this.socketClient.emit('draw-end', {
-                tool: this.currentTool,
-                color: this.color,
-                width: this.width,
-                points: this.currentStroke,
-                startX: this.startX,
-                startY: this.startY,
-                endX: this.lastX,
-                endY: this.lastY
-            });
-        }
-
-        this.currentStroke = [];
-    }
-
-    drawBrush(x, y) {
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
+        
+        this.ctx.lineWidth = this.currentBrushWidth;
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.lastX, this.lastY);
-        this.ctx.lineTo(x, y);
-        this.ctx.stroke();
-        this.lastX = x;
-        this.lastY = y;
     }
 
-    drawEraser(x, y) {
-        this.ctx.clearRect(x - this.width / 2, y - this.width / 2, this.width, this.width);
-        this.lastX = x;
-        this.lastY = y;
-    }
+    performDrawing(currentX, currentY) {
+        if (!this.isCurrentlyDrawing) return;
 
-    previewLine(x, y) {
-        if (this.imageData) {
-            this.ctx.putImageData(this.imageData, 0, 0);
+        if (this.activeToolName === 'brush' || this.activeToolName === 'eraser') {
+            this.ctx.lineTo(currentX, currentY);
+            this.ctx.stroke();
         }
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
+        
+        this.lastRecordedPositionX = currentX;
+        this.lastRecordedPositionY = currentY;
+    }
+
+    completeDrawing() {
+        if (!this.isCurrentlyDrawing) return;
+        
+        this.ctx.closePath();
+        this.isCurrentlyDrawing = false;
+        
+        // Reset composite operation
+        this.ctx.globalCompositeOperation = 'source-over';
+    }
+
+    drawTextAtPosition(x, y, textContent) {
+        this.ctx.fillStyle = this.currentDrawingColor;
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText(textContent, x, y);
+    }
+
+    // Additional methods for shape tools
+    drawLine(startX, startY, endX, endY) {
+        this.ctx.strokeStyle = this.currentDrawingColor;
+        this.ctx.lineWidth = this.currentBrushWidth;
         this.ctx.beginPath();
-        this.ctx.moveTo(this.startX, this.startY);
-        this.ctx.lineTo(x, y);
+        this.ctx.moveTo(startX, startY);
+        this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
     }
 
-    finalizeLine() {
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
+    drawRectangle(startX, startY, width, height) {
+        this.ctx.strokeStyle = this.currentDrawingColor;
+        this.ctx.lineWidth = this.currentBrushWidth;
+        this.ctx.strokeRect(startX, startY, width, height);
+    }
+
+    drawCircle(centerX, centerY, radius) {
+        this.ctx.strokeStyle = this.currentDrawingColor;
+        this.ctx.lineWidth = this.currentBrushWidth;
         this.ctx.beginPath();
-        this.ctx.moveTo(this.startX, this.startY);
-        this.ctx.lineTo(this.lastX, this.lastY);
+        this.ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         this.ctx.stroke();
-    }
-
-    previewRectangle(x, y) {
-        if (this.imageData) {
-            this.ctx.putImageData(this.imageData, 0, 0);
-        }
-        const width = x - this.startX;
-        const height = y - this.startY;
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
-        this.ctx.strokeRect(this.startX, this.startY, width, height);
-    }
-
-    finalizeRectangle() {
-        const width = this.lastX - this.startX;
-        const height = this.lastY - this.startY;
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
-        this.ctx.strokeRect(this.startX, this.startY, width, height);
-    }
-
-    previewCircle(x, y) {
-        if (this.imageData) {
-            this.ctx.putImageData(this.imageData, 0, 0);
-        }
-        const radius = Math.sqrt(Math.pow(x - this.startX, 2) + Math.pow(y - this.startY, 2));
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
-        this.ctx.beginPath();
-        this.ctx.arc(this.startX, this.startY, radius, 0, 2 * Math.PI);
-        this.ctx.stroke();
-    }
-
-    finalizeCircle() {
-        const radius = Math.sqrt(Math.pow(this.lastX - this.startX, 2) + Math.pow(this.lastY - this.startY, 2));
-        this.ctx.strokeStyle = this.color;
-        this.ctx.lineWidth = this.width;
-        this.ctx.beginPath();
-        this.ctx.arc(this.startX, this.startY, radius, 0, 2 * Math.PI);
-        this.ctx.stroke();
-    }
-
-    drawText(x, y, text, fontSize = 16) {
-        this.ctx.fillStyle = this.color;
-        this.ctx.font = `${fontSize}px Arial`;
-        this.ctx.fillText(text, x, y);
-
-        // Emit text draw event
-        if (this.socketClient && this.socketClient.isConnected()) {
-            this.socketClient.emit('draw-end', {
-                tool: 'text',
-                x: x,
-                y: y,
-                text: text,
-                color: this.color,
-                fontSize: fontSize
-            });
-        }
     }
 }
