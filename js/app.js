@@ -1,4 +1,5 @@
-const client = new RealtimeCommunicationClient("https://flam-drawing-canvas.onrender.com");
+const client = new RealtimeCommunicationClient(); 
+
 document.addEventListener('DOMContentLoaded', function initializeDrawingApplication() {
     const canvasElement = document.getElementById('drawing-canvas');
     if (!canvasElement) return;
