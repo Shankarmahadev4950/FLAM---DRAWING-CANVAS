@@ -1,173 +1,214 @@
-class DrawingToolManager {
-    constructor(canvasRenderingContext, canvasElement) {
-        this.canvasContext = canvasRenderingContext;
-        this.canvasElement = canvasElement;
-        this.activeToolName = 'brush';           
-        this.isCurrentlyDrawing = false;          
-        this.drawingStartPositionX = 0;           
-        this.drawingStartPositionY = 0;           
-        this.lastRecordedPositionX = 0;           
-        this.lastRecordedPositionY = 0;           
-        this.currentDrawingColor = '#000000';     
-        this.currentBrushWidth = 3;               
-        this.canvasSnapshotData = null;           
-        console.log('DrawingToolManager initialized successfully');
+class DrawingTool {
+    constructor(ctx, canvas, socketClient) {
+        this.ctx = ctx;
+        this.canvas = canvas;
+        this.socketClient = socketClient;
+        this.currentTool = 'brush';
+        this.isDrawing = false;
+        this.startX = 0;
+        this.startY = 0;
+        this.lastX = 0;
+        this.lastY = 0;
+        this.color = '#000000';
+        this.width = 3;
+        this.imageData = null;
+        this.currentStroke = [];
     }
 
-    switchToTool(toolNameToActivate) {
-        this.activeToolName = toolNameToActivate;
-        console.log('Switched to tool:', toolNameToActivate);
-        if (toolNameToActivate === 'text') {
-            this.canvasElement.style.cursor = 'text';
-        } else if (toolNameToActivate === 'eraser') {
-            this.canvasElement.style.cursor = 'grab';
+    setTool(tool) {
+        this.currentTool = tool;
+        console.log('Tool changed to:', tool);
+        if (tool === 'text') {
+            this.canvas.style.cursor = 'text';
+        } else if (tool === 'eraser') {
+            this.canvas.style.cursor = 'grab';
         } else {
-            this.canvasElement.style.cursor = 'crosshair';
+            this.canvas.style.cursor = 'crosshair';
         }
     }
 
-    setDrawingColor(colorHexValue) {
-        this.currentDrawingColor = colorHexValue;
+    setColor(color) {
+        this.color = color;
     }
 
-    setBrushWidth(widthInPixels) {
-        this.currentBrushWidth = widthInPixels;
+    setWidth(width) {
+        this.width = width;
     }
 
-    initiateDrawing(startXPosition, startYPosition) {
-        this.isCurrentlyDrawing = true;
-        this.drawingStartPositionX = startXPosition;
-        this.drawingStartPositionY = startYPosition;
-        this.lastRecordedPositionX = startXPosition;
-        this.lastRecordedPositionY = startYPosition;
+    startDrawing(x, y) {
+        this.isDrawing = true;
+        this.startX = x;
+        this.startY = y;
+        this.lastX = x;
+        this.lastY = y;
+        this.currentStroke = [];
 
-        const isShapeToolActive = ['line', 'rectangle', 'circle'].includes(this.activeToolName);
-        if (isShapeToolActive) {
-            this.canvasSnapshotData = this.canvasContext.getImageData(
-                0, 0, this.canvasElement.width, this.canvasElement.height
-            );
+        // Emit draw-start event to server
+        if (this.socketClient && this.socketClient.isConnected()) {
+            this.socketClient.emit('draw-start', {
+                tool: this.currentTool,
+                x: x,
+                y: y,
+                color: this.color,
+                width: this.width
+            });
+        }
+
+        if (this.currentTool === 'line' || this.currentTool === 'rectangle' || this.currentTool === 'circle') {
+            this.imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
         }
     }
 
-    performDrawing(currentXPosition, currentYPosition) {
-        if (!this.isCurrentlyDrawing) return;
-        switch (this.activeToolName) {
-            case 'brush':
-                this.drawWithBrush(currentXPosition, currentYPosition);
-                break;
-            case 'eraser':
-                this.eraseAtPosition(currentXPosition, currentYPosition);
-                break;
-            case 'line':
-                this.showLinePreview(currentXPosition, currentYPosition);
-                break;
-            case 'rectangle':
-                this.showRectanglePreview(currentXPosition, currentYPosition);
-                break;
-            case 'circle':
-                this.showCirclePreview(currentXPosition, currentYPosition);
-                break;
+    draw(x, y) {
+        if (!this.isDrawing) return;
+
+        if (this.currentTool === 'brush') {
+            this.drawBrush(x, y);
+        } else if (this.currentTool === 'eraser') {
+            this.drawEraser(x, y);
+        } else if (this.currentTool === 'line') {
+            this.previewLine(x, y);
+        } else if (this.currentTool === 'rectangle') {
+            this.previewRectangle(x, y);
+        } else if (this.currentTool === 'circle') {
+            this.previewCircle(x, y);
+        }
+
+        // Collect stroke points
+        this.currentStroke.push({ x, y });
+
+        // Emit draw-move event to server
+        if (this.socketClient && this.socketClient.isConnected()) {
+            this.socketClient.emit('draw-move', {
+                point: { x, y }
+            });
         }
     }
 
-    completeDrawing() {
-        if (!this.isCurrentlyDrawing) return;
-        this.isCurrentlyDrawing = false;
-        if (this.activeToolName === 'line') {
-            this.makeLinePermanent();
-        } else if (this.activeToolName === 'rectangle') {
-            this.makeRectanglePermanent();
-        } else if (this.activeToolName === 'circle') {
-            this.makeCirclePermanent();
+    endDrawing() {
+        if (!this.isDrawing) return;
+        this.isDrawing = false;
+
+        if (this.currentTool === 'line') {
+            this.finalizeLine();
+        } else if (this.currentTool === 'rectangle') {
+            this.finalizeRectangle();
+        } else if (this.currentTool === 'circle') {
+            this.finalizeCircle();
         }
-    }
 
-    drawWithBrush(currentXPosition, currentYPosition) {
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.lineCap = 'round';      
-        this.canvasContext.lineJoin = 'round';     
-        this.canvasContext.beginPath();
-        this.canvasContext.moveTo(this.lastRecordedPositionX, this.lastRecordedPositionY);
-        this.canvasContext.lineTo(currentXPosition, currentYPosition);
-        this.canvasContext.stroke();
-        this.lastRecordedPositionX = currentXPosition;
-        this.lastRecordedPositionY = currentYPosition;
-    }
-
-    eraseAtPosition(currentXPosition, currentYPosition) {
-        const eraserSize = this.currentBrushWidth;
-        const eraserStartX = currentXPosition - (eraserSize / 2);
-        const eraserStartY = currentYPosition - (eraserSize / 2);
-        this.canvasContext.clearRect(eraserStartX, eraserStartY, eraserSize, eraserSize);
-        this.lastRecordedPositionX = currentXPosition;
-        this.lastRecordedPositionY = currentYPosition;
-    }
-
-    showLinePreview(currentXPosition, currentYPosition) {
-        if (this.canvasSnapshotData) {
-            this.canvasContext.putImageData(this.canvasSnapshotData, 0, 0);
+        // Emit draw-end event with complete stroke
+        if (this.socketClient && this.socketClient.isConnected()) {
+            this.socketClient.emit('draw-end', {
+                tool: this.currentTool,
+                color: this.color,
+                width: this.width,
+                points: this.currentStroke,
+                startX: this.startX,
+                startY: this.startY,
+                endX: this.lastX,
+                endY: this.lastY
+            });
         }
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.beginPath();
-        this.canvasContext.moveTo(this.drawingStartPositionX, this.drawingStartPositionY);
-        this.canvasContext.lineTo(currentXPosition, currentYPosition);
-        this.canvasContext.stroke();
+
+        this.currentStroke = [];
     }
 
-    makeLinePermanent() {
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.beginPath();
-        this.canvasContext.moveTo(this.drawingStartPositionX, this.drawingStartPositionY);
-        this.canvasContext.lineTo(this.lastRecordedPositionX, this.lastRecordedPositionY);
-        this.canvasContext.stroke();
+    drawBrush(x, y) {
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.lastX, this.lastY);
+        this.ctx.lineTo(x, y);
+        this.ctx.stroke();
+        this.lastX = x;
+        this.lastY = y;
     }
 
-    showRectanglePreview(currentXPosition, currentYPosition) {
-        if (this.canvasSnapshotData) {
-            this.canvasContext.putImageData(this.canvasSnapshotData, 0, 0);
+    drawEraser(x, y) {
+        this.ctx.clearRect(x - this.width / 2, y - this.width / 2, this.width, this.width);
+        this.lastX = x;
+        this.lastY = y;
+    }
+
+    previewLine(x, y) {
+        if (this.imageData) {
+            this.ctx.putImageData(this.imageData, 0, 0);
         }
-        const rectangleWidth = currentXPosition - this.drawingStartPositionX;
-        const rectangleHeight = currentYPosition - this.drawingStartPositionY;
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.strokeRect(this.drawingStartPositionX, this.drawingStartPositionY, rectangleWidth, rectangleHeight);
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.startX, this.startY);
+        this.ctx.lineTo(x, y);
+        this.ctx.stroke();
     }
 
-    makeRectanglePermanent() {
-        const rectangleWidth = this.lastRecordedPositionX - this.drawingStartPositionX;
-        const rectangleHeight = this.lastRecordedPositionY - this.drawingStartPositionY;
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.strokeRect(this.drawingStartPositionX, this.drawingStartPositionY, rectangleWidth, rectangleHeight);
+    finalizeLine() {
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.startX, this.startY);
+        this.ctx.lineTo(this.lastX, this.lastY);
+        this.ctx.stroke();
     }
 
-    showCirclePreview(currentXPosition, currentYPosition) {
-        if (this.canvasSnapshotData) {
-            this.canvasContext.putImageData(this.canvasSnapshotData, 0, 0);
+    previewRectangle(x, y) {
+        if (this.imageData) {
+            this.ctx.putImageData(this.imageData, 0, 0);
         }
-        const radiusDistance = Math.sqrt(Math.pow(currentXPosition - this.drawingStartPositionX, 2) + Math.pow(currentYPosition - this.drawingStartPositionY, 2));
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.beginPath();
-        this.canvasContext.arc(this.drawingStartPositionX, this.drawingStartPositionY, radiusDistance, 0, 2 * Math.PI);
-        this.canvasContext.stroke();
+        const width = x - this.startX;
+        const height = y - this.startY;
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.strokeRect(this.startX, this.startY, width, height);
     }
 
-    makeCirclePermanent() {
-        const radiusDistance = Math.sqrt(Math.pow(this.lastRecordedPositionX - this.drawingStartPositionX, 2) + Math.pow(this.lastRecordedPositionY - this.drawingStartPositionY, 2));
-        this.canvasContext.strokeStyle = this.currentDrawingColor;
-        this.canvasContext.lineWidth = this.currentBrushWidth;
-        this.canvasContext.beginPath();
-        this.canvasContext.arc(this.drawingStartPositionX, this.drawingStartPositionY, radiusDistance, 0, 2 * Math.PI);
-        this.canvasContext.stroke();
+    finalizeRectangle() {
+        const width = this.lastX - this.startX;
+        const height = this.lastY - this.startY;
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.strokeRect(this.startX, this.startY, width, height);
     }
 
-    drawTextAtPosition(xCoordinate, yCoordinate, textContent, fontSizeInPixels = 16) {
-        this.canvasContext.fillStyle = this.currentDrawingColor;
-        this.canvasContext.font = fontSizeInPixels + 'px Arial';
-        this.canvasContext.fillText(textContent, xCoordinate, yCoordinate);
+    previewCircle(x, y) {
+        if (this.imageData) {
+            this.ctx.putImageData(this.imageData, 0, 0);
+        }
+        const radius = Math.sqrt(Math.pow(x - this.startX, 2) + Math.pow(y - this.startY, 2));
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.beginPath();
+        this.ctx.arc(this.startX, this.startY, radius, 0, 2 * Math.PI);
+        this.ctx.stroke();
+    }
+
+    finalizeCircle() {
+        const radius = Math.sqrt(Math.pow(this.lastX - this.startX, 2) + Math.pow(this.lastY - this.startY, 2));
+        this.ctx.strokeStyle = this.color;
+        this.ctx.lineWidth = this.width;
+        this.ctx.beginPath();
+        this.ctx.arc(this.startX, this.startY, radius, 0, 2 * Math.PI);
+        this.ctx.stroke();
+    }
+
+    drawText(x, y, text, fontSize = 16) {
+        this.ctx.fillStyle = this.color;
+        this.ctx.font = `${fontSize}px Arial`;
+        this.ctx.fillText(text, x, y);
+
+        // Emit text draw event
+        if (this.socketClient && this.socketClient.isConnected()) {
+            this.socketClient.emit('draw-end', {
+                tool: 'text',
+                x: x,
+                y: y,
+                text: text,
+                color: this.color,
+                fontSize: fontSize
+            });
+        }
     }
 }
