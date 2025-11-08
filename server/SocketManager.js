@@ -230,7 +230,15 @@ class SocketManager {
         return color;
     }
 
-    // ... rest of the existing methods (handleJoin, handleDrawStart, etc.)
 }
+ broadcastUserCount() {
+        const count = this.io.engine.clientsCount;
+        this.io.emit('user-count', count);
+        console.log(`Online users: ${count}`);
+    }
 
+    getUserCount() {
+        return this.io.engine.clientsCount;
+    }
+}
 module.exports = SocketManager;
