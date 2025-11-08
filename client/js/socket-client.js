@@ -9,7 +9,7 @@ class RealtimeCommunicationClient {
 
         this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
         this.setupConnectionHandlers();
-        this.setupAdditionalListeners(); // ✅ Added listener setup
+        this.setupAdditionalListeners(); 
         this.socketInstance.on("user-count", (count) => {
     document.getElementById("user-count").innerText = count;
 });
@@ -33,8 +33,6 @@ class RealtimeCommunicationClient {
             console.error('WebSocket connection error:', errorObject);
         });
     }
-
-    // ✅ Added this full function
     setupAdditionalListeners() {
         this.socketInstance.on("user-count", (count) => {
             const el = document.getElementById("user-count");
