@@ -74,6 +74,10 @@ class SocketManager {
 
         // Update user list for everyone
         this.io.to(roomId).emit('user-list', this.roomManager.getUsersInRoom(roomId));
+        
+        // Broadcast updated user count
+        this.broadcastUserCount();
+        
         console.log(`User ${userId} joined room ${roomId}`);
     }
 
@@ -81,14 +85,20 @@ class SocketManager {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
 
+        console.log('Draw start received:', data);
+
         // Store current operation in socket for continuation
         socket.currentOperation = {
             ...data,
-            points: [data.point] // Initialize points array
+            userId: data.userId,
+            points: [data.point]
         };
 
         // Broadcast draw start to other users
-        socket.to(roomData.roomId).emit('draw-start', data);
+        socket.to(roomData.roomId).emit('draw-start', {
+            ...data,
+            userId: data.userId
+        });
     }
 
     handleDrawMove(socket, data) {
@@ -101,7 +111,10 @@ class SocketManager {
         }
 
         // Broadcast draw move to other users
-        socket.to(roomData.roomId).emit('draw-move', data);
+        socket.to(roomData.roomId).emit('draw-move', {
+            ...data,
+            userId: data.userId
+        });
     }
 
     handleDrawEnd(socket, data) {
@@ -117,7 +130,7 @@ class SocketManager {
         // Add the completed operation to history
         const operation = history.addOperation(socket.currentOperation);
         
-        // Broadcast the final operation to all users
+        // Broadcast the final operation to all users (including sender for consistency)
         this.io.to(roomId).emit('draw-end', {
             ...operation,
             userId: socket.currentOperation.userId
@@ -129,19 +142,20 @@ class SocketManager {
         // Clear current operation
         delete socket.currentOperation;
 
-        console.log(`Operation completed: ${operation.id}`);
+        console.log(`Operation completed: ${operation.id} by user ${operation.userId}`);
     }
 
     handleCursorMove(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
         
-        const { roomId } = roomData;
+        const { roomId, user } = roomData;
         
         // Broadcast cursor position to other users
         socket.to(roomId).emit('cursor-update', {
             ...data,
-            socketId: socket.id
+            userId: data.userId,
+            color: user.color
         });
     }
 
@@ -155,7 +169,7 @@ class SocketManager {
 
         const undoneOperation = history.undo();
         if (undoneOperation) {
-            // Broadcast undo to all clients
+            // Broadcast updated operations to all clients
             this.io.to(roomId).emit('operations-update', {
                 operations: history.getActiveOperations()
             });
@@ -175,7 +189,7 @@ class SocketManager {
 
         const redoneOperation = history.redo();
         if (redoneOperation) {
-            // Broadcast redo to all clients
+            // Broadcast updated operations to all clients
             this.io.to(roomId).emit('operations-update', {
                 operations: history.getActiveOperations()
             });
@@ -199,7 +213,7 @@ class SocketManager {
         this.io.to(roomId).emit('canvas-cleared');
         this.broadcastUndoRedoState(roomId, history);
 
-        console.log(`Canvas cleared in room ${roomId}`);
+        console.log(`Canvas cleared in room ${roomId} by user ${data.userId}`);
     }
 
     handleDisconnect(socket) {
@@ -214,6 +228,9 @@ class SocketManager {
         this.io.to(roomId).emit('user-list', this.roomManager.getUsersInRoom(roomId));
 
         console.log(`User ${user.id} disconnected`);
+        
+        // Broadcast updated user count
+        this.broadcastUserCount();
     }
 
     broadcastUndoRedoState(roomId, history) {
