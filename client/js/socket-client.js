@@ -8,12 +8,11 @@ class RealtimeCommunicationClient {
         });
 
         this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
+
         this.setupConnectionHandlers();
-        this.setupAdditionalListeners(); 
-        this.socketInstance.on("user-count", (count) => {
-    document.getElementById("user-count").innerText = count;
-});
-        console.log('RealtimeCommunicationClient initialized with User ID:', this.uniqueUserIdentifier);
+        this.setupUserCountListener();
+
+        console.log("RealtimeCommunicationClient initialized with user ID:", this.uniqueUserIdentifier);
     }
 
     generateUniqueUserIdentifier() {
@@ -21,23 +20,26 @@ class RealtimeCommunicationClient {
     }
 
     setupConnectionHandlers() {
-        this.socketInstance.on('connect', () => {
-            console.log('Connected to WebSocket server');
+        this.socketInstance.on("connect", () => {
+            console.log("Connected to WebSocket Server ✅");
         });
 
-        this.socketInstance.on('disconnect', () => {
-            console.log('Disconnected from WebSocket server');
+        this.socketInstance.on("disconnect", () => {
+            console.log("Disconnected from WebSocket Server");
         });
 
-        this.socketInstance.on('connect_error', (errorObject) => {
-            console.error('WebSocket connection error:', errorObject);
+        this.socketInstance.on("connect_error", (errorObject) => {
+            console.error("WebSocket Connection Error:", errorObject);
         });
     }
-    setupAdditionalListeners() {
+
+    setupUserCountListener() {
         this.socketInstance.on("user-count", (count) => {
-            const el = document.getElementById("user-count");
-            if (el) el.innerText = count;
-            console.log("Online Users Updated:", count);
+            const countElement = document.getElementById("user-count");
+            if (countElement) {
+                countElement.innerText = count;
+            }
+            console.log("Active Users Connected:", count);
         });
     }
 
@@ -58,30 +60,30 @@ class RealtimeCommunicationClient {
     }
 
     emitDrawStartEvent(operationDataObject) {
-        this.emitEventToServer('draw-start', { ...operationDataObject, userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("draw-start", { ...operationDataObject, userId: this.uniqueUserIdentifier });
     }
 
     emitDrawMoveEvent(pointsDataObject) {
-        this.emitEventToServer('draw-move', pointsDataObject);
+        this.emitEventToServer("draw-move", pointsDataObject);
     }
 
     emitDrawEndEvent() {
-        this.emitEventToServer('draw-end', {});
+        this.emitEventToServer("draw-end", {});
     }
 
     emitCursorPositionEvent(positionDataObject) {
-        this.emitEventToServer('cursor-move', { userId: this.uniqueUserIdentifier, ...positionDataObject });
+        this.emitEventToServer("cursor-move", { userId: this.uniqueUserIdentifier, ...positionDataObject });
     }
 
     emitUndoActionEvent() {
-        this.emitEventToServer('undo', { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("undo", { userId: this.uniqueUserIdentifier });
     }
 
     emitRedoActionEvent() {
-        this.emitEventToServer('redo', { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("redo", { userId: this.uniqueUserIdentifier });
     }
 
     emitClearCanvasEvent() {
-        this.emitEventToServer('clear-all', { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("clear-all", { userId: this.uniqueUserIdentifier });
     }
 }
