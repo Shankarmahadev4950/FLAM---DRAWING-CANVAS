@@ -1,6 +1,8 @@
 class RealtimeCommunicationClient {
-    constructor(serverUrlString) {
-        this.socketInstance = io(serverUrlString, {
+    constructor(serverUrl = '') {
+        // Use current origin if no server URL provided (for deployed environment)
+        const url = serverUrl || window.location.origin;
+        this.socketInstance = io(url, {
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
@@ -16,7 +18,8 @@ class RealtimeCommunicationClient {
     }
 
     generateUniqueUserIdentifier() {
-        return `user_${Math.random().toString(36).substring(2, 11)}`;
+        // Generate a more readable user ID
+        return `user_${Math.random().toString(36).substring(2, 6)}`;
     }
 
     setupConnectionHandlers() {
@@ -25,7 +28,7 @@ class RealtimeCommunicationClient {
         });
 
         this.socketInstance.on("disconnect", () => {
-            console.log("Disconnected from WebSocket Server");
+            console.log("Disconnected from WebSocket Server ❌");
         });
 
         this.socketInstance.on("connect_error", (errorObject) => {
@@ -48,7 +51,14 @@ class RealtimeCommunicationClient {
     }
 
     emitEventToServer(eventNameToEmit, eventDataObject) {
-        this.socketInstance.emit(eventNameToEmit, eventDataObject);
+        // Always include user ID in all events
+        const dataWithUserId = {
+            ...eventDataObject,
+            userId: this.uniqueUserIdentifier
+        };
+        
+        console.log(`Emitting ${eventNameToEmit}:`, dataWithUserId);
+        this.socketInstance.emit(eventNameToEmit, dataWithUserId);
     }
 
     getUserIdentifier() {
@@ -56,11 +66,11 @@ class RealtimeCommunicationClient {
     }
 
     isSocketConnected() {
-        return this.socketInstance.connected;
+        return this.socketInstance && this.socketInstance.connected;
     }
 
     emitDrawStartEvent(operationDataObject) {
-        this.emitEventToServer("draw-start", { ...operationDataObject, userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("draw-start", operationDataObject);
     }
 
     emitDrawMoveEvent(pointsDataObject) {
@@ -72,18 +82,18 @@ class RealtimeCommunicationClient {
     }
 
     emitCursorPositionEvent(positionDataObject) {
-        this.emitEventToServer("cursor-move", { userId: this.uniqueUserIdentifier, ...positionDataObject });
+        this.emitEventToServer("cursor-move", positionDataObject);
     }
 
     emitUndoActionEvent() {
-        this.emitEventToServer("undo", { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("undo", {});
     }
 
     emitRedoActionEvent() {
-        this.emitEventToServer("redo", { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("redo", {});
     }
 
     emitClearCanvasEvent() {
-        this.emitEventToServer("clear-all", { userId: this.uniqueUserIdentifier });
+        this.emitEventToServer("clear-all", {});
     }
 }
