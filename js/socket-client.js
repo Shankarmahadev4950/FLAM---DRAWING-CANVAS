@@ -1,5 +1,7 @@
 class RealtimeCommunicationClient {
     constructor(serverUrlString) {
+        console.log('Creating socket connection to:', serverUrlString);
+        
         this.socketInstance = io(serverUrlString, {
             reconnection: true,
             reconnectionDelay: 1000,
@@ -9,7 +11,8 @@ class RealtimeCommunicationClient {
 
         this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
         this.setupConnectionHandlers();
-        console.log('RealtimeCommunicationClient initialized');
+        
+        console.log('RealtimeCommunicationClient initialized with ID:', this.uniqueUserIdentifier);
     }
 
     generateUniqueUserIdentifier() {
@@ -19,6 +22,7 @@ class RealtimeCommunicationClient {
     setupConnectionHandlers() {
         this.socketInstance.on('connect', () => {
             console.log('✅ Connected to server');
+            // Automatically join room on connection
             this.socketInstance.emit('join', {
                 userId: this.uniqueUserIdentifier
             });
@@ -31,18 +35,48 @@ class RealtimeCommunicationClient {
         this.socketInstance.on('connect_error', (errorObject) => {
             console.error('🔴 Connection error:', errorObject);
         });
+
+        // Listen for user count updates
+        this.socketInstance.on('user-count', (count) => {
+            console.log('👥 User count updated:', count);
+            this.updateUserCount(count);
+        });
+    }
+
+    updateUserCount(count) {
+        // Update multiple possible elements
+        const userCountElement = document.getElementById('user-count');
+        if (userCountElement) {
+            userCountElement.textContent = count;
+        }
+
+        const onlineCountElement = document.querySelector('.online-count');
+        if (onlineCountElement) {
+            onlineCountElement.textContent = `${count} Online`;
+        }
+
+        const statusElement = document.querySelector('.status');
+        if (statusElement) {
+            statusElement.textContent = count > 1 ? `${count} users online` : '1 user online';
+        }
     }
 
     registerEventListener(eventName, callbackFunction) {
+        console.log('Registering listener for:', eventName);
         this.socketInstance.on(eventName, callbackFunction);
     }
 
     emitEventToServer(eventName, dataPayload) {
+        console.log('Emitting event:', eventName);
         this.socketInstance.emit(eventName, dataPayload);
     }
 
     emitDrawStartEvent(drawingData) {
-        this.socketInstance.emit('draw-start', drawingData);
+        console.log('Draw start event:', drawingData);
+        this.socketInstance.emit('draw-start', {
+            ...drawingData,
+            userId: this.uniqueUserIdentifier
+        });
     }
 
     emitDrawMoveEvent(pointData) {
@@ -50,6 +84,7 @@ class RealtimeCommunicationClient {
     }
 
     emitDrawEndEvent(strokeData) {
+        console.log('Draw end event:', strokeData);
         this.socketInstance.emit('draw-end', strokeData);
     }
 
