@@ -12,7 +12,53 @@ document.addEventListener('DOMContentLoaded', function initializeDrawingApplicat
     let currentlySelectedTool = 'brush';
     let selectedColorValue = '#000000';
     let selectedBrushWidthValue = 4;
+canvasElement.addEventListener('mousedown', (e) => {
+    const { x, y } = getCanvasCoordinatesFromEvent(e);
+    client.emitDrawStartEvent({
+        tool: currentlySelectedTool,
+        color: selectedColorValue,
+        width: selectedBrushWidthValue,
+        point: { x, y }
+    });
+});
 
+canvasElement.addEventListener('mousemove', (e) => {
+    if (!isCurrentlyDrawing) return;
+    const { x, y } = getCanvasCoordinatesFromEvent(e);
+    client.emitDrawMoveEvent({ point: { x, y } });
+});
+
+canvasElement.addEventListener('mouseup', () => {
+    client.emitDrawEndEvent();
+});
+
+canvasElement.addEventListener('mouseleave', () => {
+    client.emitDrawEndEvent();
+});
+
+// Receive drawing data from other users
+client.registerEventListener("operation", (operation) => {
+    const { tool, color, width, data } = operation.data;
+    drawingToolManagerInstance.setDrawingColor(color);
+    drawingToolManagerInstance.setBrushWidth(width);
+    drawingToolManagerInstance.switchToTool(tool);
+
+    data.points.forEach((p, i) => {
+        if (i === 0) {
+            drawingToolManagerInstance.initiateDrawing(p.x, p.y);
+        } else {
+            drawingToolManagerInstance.performDrawing(p.x, p.y);
+        }
+    });
+
+    drawingToolManagerInstance.completeDrawing();
+});
+
+// Update online user count
+client.registerEventListener("user-count", (count) => {
+    const el = document.getElementById("user-count");
+    if (el) el.innerText = count;
+});
     function calculateAndSetCanvasDimensions() {
         const sidebarWidthPixels = 300;
         const headerHeightPixels = 100;
