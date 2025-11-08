@@ -22,6 +22,11 @@ class CanvasRenderingManager {
 
         this.canvasContext.lineCap = 'round';
         this.canvasContext.lineJoin = 'round';
+
+        window.addEventListener('resize', () => {
+            this.canvasElement.width = window.innerWidth - sidebarWidthPixels;
+            this.canvasElement.height = window.innerHeight - headerHeightPixels;
+        });
     }
 
     attachEventListenersToCanvas() {
@@ -30,9 +35,9 @@ class CanvasRenderingManager {
         this.canvasElement.addEventListener('mouseup', (event) => this.handleMouseUpEvent(event));
         this.canvasElement.addEventListener('mouseout', (event) => this.handleMouseUpEvent(event));
 
-        this.canvasElement.addEventListener('touchstart', (event) => this.handleTouchStartEvent(event));
-        this.canvasElement.addEventListener('touchmove', (event) => this.handleTouchMoveEvent(event));
-        this.canvasElement.addEventListener('touchend', (event) => this.handleTouchEndEvent(event));
+        this.canvasElement.addEventListener('touchstart', (event) => this.handleTouchStartEvent(event), { passive: false });
+        this.canvasElement.addEventListener('touchmove', (event) => this.handleTouchMoveEvent(event), { passive: false });
+        this.canvasElement.addEventListener('touchend', (event) => this.handleTouchEndEvent(event), { passive: false });
     }
 
     configureToolButtonHandlers() {
@@ -113,6 +118,8 @@ class CanvasRenderingManager {
     }
 
     handleMouseUpEvent(mouseEvent) {
+        if (!this.isCurrentlyDrawing) return;
+
         const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
         const xCoordinateOnCanvas = mouseEvent.clientX - canvasBoundingRectangle.left;
         const yCoordinateOnCanvas = mouseEvent.clientY - canvasBoundingRectangle.top;
@@ -121,7 +128,7 @@ class CanvasRenderingManager {
         this.drawingToolManagerInstance.lastRecordedPositionY = yCoordinateOnCanvas;
         this.drawingToolManagerInstance.completeDrawing();
 
-        if (this.isCurrentlyDrawing && this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
+        if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
             this.socketClientInstance.emitEventToServer('draw-end', {
                 tool: this.drawingToolManagerInstance.activeToolName,
                 color: this.drawingToolManagerInstance.currentDrawingColor,
@@ -140,7 +147,7 @@ class CanvasRenderingManager {
 
     handleTouchStartEvent(touchEvent) {
         touchEvent.preventDefault();
-        const firstTouchContact = touchEvent.touches[0];
+        const firstTouchContact = touchEvent.touches;
         const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
         const xCoordinateOnCanvas = firstTouchContact.clientX - canvasBoundingRectangle.left;
         const yCoordinateOnCanvas = firstTouchContact.clientY - canvasBoundingRectangle.top;
@@ -164,7 +171,7 @@ class CanvasRenderingManager {
         touchEvent.preventDefault();
         if (!this.drawingToolManagerInstance.isCurrentlyDrawing) return;
 
-        const firstTouchContact = touchEvent.touches[0];
+        const firstTouchContact = touchEvent.touches;
         const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
         const xCoordinateOnCanvas = firstTouchContact.clientX - canvasBoundingRectangle.left;
         const yCoordinateOnCanvas = firstTouchContact.clientY - canvasBoundingRectangle.top;
@@ -227,7 +234,7 @@ class CanvasRenderingManager {
             this.canvasContext.beginPath();
 
             if (points.length > 0) {
-                this.canvasContext.moveTo(points[0].x, points[0].y);
+                this.canvasContext.moveTo(points.x, points.y);
                 points.forEach((point, index) => {
                     if (index > 0) {
                         this.canvasContext.lineTo(point.x, point.y);
@@ -237,20 +244,20 @@ class CanvasRenderingManager {
             this.canvasContext.stroke();
         } else if (tool === 'line' && points && points.length >= 2) {
             this.canvasContext.beginPath();
-            this.canvasContext.moveTo(points[0].x, points[0].y);
+            this.canvasContext.moveTo(points.x, points.y);
             this.canvasContext.lineTo(points[points.length - 1].x, points[points.length - 1].y);
             this.canvasContext.stroke();
         } else if (tool === 'rectangle' && points && points.length >= 2) {
-            const width = points[points.length - 1].x - points[0].x;
-            const height = points[points.length - 1].y - points[0].y;
-            this.canvasContext.strokeRect(points[0].x, points[0].y, width, height);
+            const rectWidth = points[points.length - 1].x - points.x;
+            const rectHeight = points[points.length - 1].y - points.y;
+            this.canvasContext.strokeRect(points.x, points.y, rectWidth, rectHeight);
         } else if (tool === 'circle' && points && points.length >= 2) {
             const radius = Math.sqrt(
-                Math.pow(points[points.length - 1].x - points[0].x, 2) +
-                Math.pow(points[points.length - 1].y - points[0].y, 2)
+                Math.pow(points[points.length - 1].x - points.x, 2) +
+                Math.pow(points[points.length - 1].y - points.y, 2)
             );
             this.canvasContext.beginPath();
-            this.canvasContext.arc(points[0].x, points[0].y, radius, 0, 2 * Math.PI);
+            this.canvasContext.arc(points.x, points.y, radius, 0, 2 * Math.PI);
             this.canvasContext.stroke();
         } else if (tool === 'text' && text) {
             this.canvasContext.font = `${fontSize || 16}px Arial`;
