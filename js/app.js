@@ -1,161 +1,325 @@
-let socketClient;
-let canvasManager;
-let drawingToolManager;
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== App Starting ===');
-    
-    try {
-        socketClient = new RealtimeCommunicationClient(window.location.origin);
-        console.log('✅ Socket client created');
+class CollaborativeDrawingApp {
+    constructor() {
+        this.canvas = document.getElementById('drawing-canvas');
+        this.ctx = this.canvas.getContext('2d');
         
-        canvasManager = new CanvasRenderingManager('drawing-canvas', socketClient);
-        console.log('✅ Canvas manager created');
+        // Initialize components
+        this.socketClient = new RealtimeCommunicationClient();
+        this.drawingTool = new DrawingToolManager(this.ctx, this.canvas);
+        this.stateManager = new ApplicationStateManager();
+        this.uiController = new UserInterfaceController(
+            (tool) => this.onToolChange(tool),
+            (color) => this.onColorChange(color),
+            (width) => this.onWidthChange(width),
+            () => this.onUndo(),
+            () => this.onRedo(),
+            () => this.onClear()
+        );
+
+        this.isDrawing = false;
+        this.currentOperation = null;
         
-        drawingToolManager = canvasManager.drawingToolManagerInstance;
-        console.log('✅ Drawing tool manager assigned');
-
-        setupUIEventListeners();
-        setupSocketEventListeners();
+        this.setupCanvas();
+        this.setupSocketListeners();
+        this.joinRoom();
         
-        console.log('=== App Initialized Successfully ===');
-    } catch (error) {
-        console.error('❌ Error during initialization:', error);
+        console.log('Collaborative Drawing App initialized');
     }
-});
 
-function setupUIEventListeners() {
-    const colorPickerElement = document.getElementById('color-picker');
-    if (colorPickerElement) {
-        colorPickerElement.addEventListener('change', (event) => {
-            canvasManager.setDrawingColor(event.target.value);
-            console.log('Color changed to:', event.target.value);
+    setupCanvas() {
+        // Set canvas dimensions
+        const sidebarWidth = 300;
+        const headerHeight = 100;
+        this.canvas.width = window.innerWidth - sidebarWidth;
+        this.canvas.height = window.innerHeight - headerHeight;
+
+        // Set default drawing styles
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        
+        // Add event listeners
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', () => this.handleMouseUp());
+        this.canvas.addEventListener('mouseleave', () => this.handleMouseUp());
+
+        // Touch events
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', () => this.handleTouchEnd());
+
+        // Window resize
+        window.addEventListener('resize', () => this.handleResize());
+    }
+
+    setupSocketListeners() {
+        // Connection events
+        this.socketClient.registerEventListener('connect', () => {
+            this.uiController.setConnectionStatusIndicator(true);
+        });
+
+        this.socketClient.registerEventListener('disconnect', () => {
+            this.uiController.setConnectionStatusIndicator(false);
+        });
+
+        // Drawing events from other users
+        this.socketClient.registerEventListener('draw-start', (data) => {
+            this.handleRemoteDrawStart(data);
+        });
+
+        this.socketClient.registerEventListener('draw-move', (data) => {
+            this.handleRemoteDrawMove(data);
+        });
+
+        this.socketClient.registerEventListener('draw-end', (data) => {
+            this.handleRemoteDrawEnd(data);
+        });
+
+        // Cursor events
+        this.socketClient.registerEventListener('cursor-update', (data) => {
+            this.handleRemoteCursorMove(data);
+        });
+
+        // User management
+        this.socketClient.registerEventListener('user-joined', (user) => {
+            this.stateManager.addUserToConnectedList(user);
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        this.socketClient.registerEventListener('user-left', (data) => {
+            this.stateManager.removeUserFromConnectedList(data.userId);
+            this.uiController.removeRemoteUserCursor(data.userId);
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        this.socketClient.registerEventListener('user-list', (users) => {
+            users.forEach(user => this.stateManager.addUserToConnectedList(user));
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        // Initialization
+        this.socketClient.registerEventListener('init', (data) => {
+            this.stateManager.initializeApplicationState(data);
+            this.redrawCanvas();
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+            this.uiController.setUndoButtonEnabled(data.canUndo);
+            this.uiController.setRedoButtonEnabled(data.canRedo);
+        });
+
+        // Undo/Redo state
+        this.socketClient.registerEventListener('undo-redo-state', (state) => {
+            this.uiController.setUndoButtonEnabled(state.canUndo);
+            this.uiController.setRedoButtonEnabled(state.canRedo);
+        });
+
+        // Canvas operations
+        this.socketClient.registerEventListener('operations-update', (data) => {
+            this.stateManager.setOperationsInList(data.operations);
+            this.redrawCanvas();
+        });
+
+        this.socketClient.registerEventListener('canvas-cleared', () => {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.stateManager.setOperationsInList([]);
         });
     }
 
-    const brushSizeSliderElement = document.getElementById('brush-size');
-    if (brushSizeSliderElement) {
-        brushSizeSliderElement.addEventListener('input', (event) => {
-            const size = parseInt(event.target.value);
-            canvasManager.setBrushWidth(size);
-            
-            const sizeDisplayElement = document.getElementById('size-display');
-            if (sizeDisplayElement) {
-                sizeDisplayElement.textContent = size + 'px';
-            }
-            console.log('Brush size changed to:', size);
+    joinRoom() {
+        this.socketClient.emitEventToServer('join', {
+            userId: this.socketClient.getUserIdentifier()
         });
     }
 
-    const clearCanvasButtonElement = document.getElementById('clear-btn');
-    if (clearCanvasButtonElement) {
-        clearCanvasButtonElement.addEventListener('click', () => {
-            canvasManager.clearCanvasContent();
-            
-            if (socketClient && socketClient.isSocketConnected()) {
-                socketClient.emitEventToServer('clear-all', {});
-                console.log('Clear canvas event sent to server');
-            }
-        });
+    // Local drawing handlers
+    handleMouseDown(e) {
+        if (e.button !== 0) return; // Only left click
+        
+        const point = this.getCanvasPoint(e);
+        this.startDrawing(point);
     }
 
-    const undoButtonElement = document.getElementById('undo-btn');
-    if (undoButtonElement) {
-        undoButtonElement.addEventListener('click', () => {
-            if (socketClient && socketClient.isSocketConnected()) {
-                socketClient.emitEventToServer('undo', {});
-                console.log('Undo event sent to server');
-            }
-        });
-    }
-
-    const redoButtonElement = document.getElementById('redo-btn');
-    if (redoButtonElement) {
-        redoButtonElement.addEventListener('click', () => {
-            if (socketClient && socketClient.isSocketConnected()) {
-                socketClient.emitEventToServer('redo', {});
-                console.log('Redo event sent to server');
-            }
-        });
-    }
-
-    console.log('✅ UI event listeners setup complete');
-}
-
-function setupSocketEventListeners() {
-    if (!socketClient) {
-        console.error('❌ Socket client not available');
-        return;
-    }
-
-    socketClient.registerEventListener('init', (data) => {
-        console.log('🎨 Initialized with data:', data);
-        if (data.operations && data.operations.length > 0) {
-            console.log(`Loaded ${data.operations.length} existing operations`);
+    handleMouseMove(e) {
+        const point = this.getCanvasPoint(e);
+        
+        if (this.isDrawing) {
+            this.continueDrawing(point);
         }
-    });
-
-    socketClient.registerEventListener('user-joined', (data) => {
-        console.log('👤 User joined:', data);
-    });
-
-    socketClient.registerEventListener('user-left', (data) => {
-        console.log('👋 User left:', data);
-    });
-
-    socketClient.registerEventListener('user-list', (users) => {
-        console.log('👥 User list updated:', users);
-        updateUserListDisplay(users);
-    });
-
-    socketClient.registerEventListener('operations-update', (data) => {
-        console.log('🔄 Operations updated:', data);
-    });
-
-    socketClient.registerEventListener('undo-redo-state', (state) => {
-        console.log('↩️ Undo/Redo state:', state);
-        updateUndoRedoButtons(state);
-    });
-
-    socketClient.registerEventListener('operation', (operation) => {
-        console.log('✏️ Operation received:', operation);
-    });
-
-    socketClient.registerEventListener('canvas-cleared', () => {
-        console.log('🗑️ Canvas cleared by remote user');
-    });
-
-    console.log('✅ Socket event listeners setup complete');
-}
-
-function updateUserListDisplay(users) {
-    const onlineCountDisplay = document.querySelector('.online-count');
-    if (onlineCountDisplay) {
-        onlineCountDisplay.textContent = `${users.length} Online`;
+        
+        // Send cursor position
+        this.socketClient.emitCursorPositionEvent(point);
     }
 
-    const userListElement = document.getElementById('user-list');
-    if (userListElement) {
-        userListElement.innerHTML = '';
-        users.forEach(user => {
-            const userItem = document.createElement('div');
-            userItem.className = 'user-item';
-            userItem.style.color = user.color;
-            userItem.textContent = user.id;
-            userListElement.appendChild(userItem);
+    handleMouseUp() {
+        this.finishDrawing();
+    }
+
+    handleTouchStart(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const point = this.getCanvasPoint(touch);
+        this.startDrawing(point);
+    }
+
+    handleTouchMove(e) {
+        e.preventDefault();
+        if (!this.isDrawing) return;
+        
+        const touch = e.touches[0];
+        const point = this.getCanvasPoint(touch);
+        this.continueDrawing(point);
+        
+        // Send cursor position
+        this.socketClient.emitCursorPositionEvent(point);
+    }
+
+    handleTouchEnd(e) {
+        e.preventDefault();
+        this.finishDrawing();
+    }
+
+    getCanvasPoint(input) {
+        const rect = this.canvas.getBoundingClientRect();
+        return {
+            x: input.clientX - rect.left,
+            y: input.clientY - rect.top
+        };
+    }
+
+    startDrawing(point) {
+        this.isDrawing = true;
+        
+        this.currentOperation = {
+            userId: this.socketClient.getUserIdentifier(),
+            tool: this.uiController.getCurrentlySelectedTool(),
+            color: this.uiController.getCurrentlySelectedColor(),
+            brushSize: this.uiController.getCurrentlySelectedWidth(),
+            points: [point],
+            timestamp: Date.now()
+        };
+
+        // Start drawing locally
+        this.drawingTool.initiateDrawing(point.x, point.y);
+        
+        // Send to server
+        this.socketClient.emitDrawStartEvent({
+            point: point,
+            tool: this.currentOperation.tool,
+            color: this.currentOperation.color,
+            brushSize: this.currentOperation.brushSize
         });
     }
-}
 
-function updateUndoRedoButtons(state) {
-    const undoBtn = document.getElementById('undo-btn');
-    const redoBtn = document.getElementById('redo-btn');
-
-    if (undoBtn) {
-        undoBtn.disabled = !state.canUndo;
+    continueDrawing(point) {
+        if (!this.isDrawing) return;
+        
+        this.currentOperation.points.push(point);
+        
+        // Continue drawing locally
+        this.drawingTool.performDrawing(point.x, point.y);
+        
+        // Send to server
+        this.socketClient.emitDrawMoveEvent({
+            point: point
+        });
     }
 
-    if (redoBtn) {
-        redoBtn.disabled = !state.canRedo;
+    finishDrawing() {
+        if (!this.isDrawing) return;
+        
+        this.isDrawing = false;
+        this.drawingTool.completeDrawing();
+        
+        // Send to server
+        this.socketClient.emitDrawEndEvent();
+        
+        this.currentOperation = null;
+    }
+
+    // Remote drawing handlers
+    handleRemoteDrawStart(data) {
+        // Initialize remote drawing
+        this.drawingTool.setDrawingColor(data.color);
+        this.drawingTool.setBrushWidth(data.brushSize);
+        this.drawingTool.initiateDrawing(data.point.x, data.point.y);
+    }
+
+    handleRemoteDrawMove(data) {
+        // Continue remote drawing
+        this.drawingTool.performDrawing(data.point.x, data.point.y);
+    }
+
+    handleRemoteDrawEnd(data) {
+        // Complete remote drawing
+        this.drawingTool.completeDrawing();
+    }
+
+    handleRemoteCursorMove(data) {
+        // Update remote cursor position
+        this.uiController.updateRemoteUserCursorPosition(data, data.color);
+    }
+
+    handleResize() {
+        // Save current canvas image
+        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Resize canvas
+        const sidebarWidth = 300;
+        const headerHeight = 100;
+        this.canvas.width = window.innerWidth - sidebarWidth;
+        this.canvas.height = window.innerHeight - headerHeight;
+        
+        // Restore canvas image
+        this.ctx.putImageData(imageData, 0, 0);
+    }
+
+    redrawCanvas() {
+        // Clear canvas
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Redraw all operations
+        const operations = this.stateManager.getOperationsFromList();
+        operations.forEach(operation => {
+            if (operation.points && operation.points.length > 0) {
+                this.drawingTool.setDrawingColor(operation.color);
+                this.drawingTool.setBrushWidth(operation.brushSize);
+                
+                // Draw the operation
+                this.drawingTool.initiateDrawing(operation.points[0].x, operation.points[0].y);
+                for (let i = 1; i < operation.points.length; i++) {
+                    this.drawingTool.performDrawing(operation.points[i].x, operation.points[i].y);
+                }
+                this.drawingTool.completeDrawing();
+            }
+        });
+    }
+
+    // UI callbacks
+    onToolChange(tool) {
+        this.drawingTool.switchToTool(tool);
+    }
+
+    onColorChange(color) {
+        this.drawingTool.setDrawingColor(color);
+    }
+
+    onWidthChange(width) {
+        this.drawingTool.setBrushWidth(width);
+    }
+
+    onUndo() {
+        this.socketClient.emitUndoActionEvent();
+    }
+
+    onRedo() {
+        this.socketClient.emitRedoActionEvent();
+    }
+
+    onClear() {
+        this.socketClient.emitClearCanvasEvent();
     }
 }
+
+// Initialize application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.drawingApp = new CollaborativeDrawingApp();
+});
