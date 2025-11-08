@@ -55,15 +55,18 @@ class CollaborativeDrawingApp {
     setupSocketListeners() {
         // Connection events
         this.socketClient.registerEventListener('connect', () => {
+            console.log('Connected to server');
             this.uiController.setConnectionStatusIndicator(true);
         });
 
         this.socketClient.registerEventListener('disconnect', () => {
+            console.log('Disconnected from server');
             this.uiController.setConnectionStatusIndicator(false);
         });
 
-        // Drawing events from other users
+        // Drawing events from other users - FIXED
         this.socketClient.registerEventListener('draw-start', (data) => {
+            console.log('Remote draw start:', data);
             this.handleRemoteDrawStart(data);
         });
 
@@ -72,6 +75,7 @@ class CollaborativeDrawingApp {
         });
 
         this.socketClient.registerEventListener('draw-end', (data) => {
+            console.log('Remote draw end:', data);
             this.handleRemoteDrawEnd(data);
         });
 
@@ -82,23 +86,27 @@ class CollaborativeDrawingApp {
 
         // User management
         this.socketClient.registerEventListener('user-joined', (user) => {
+            console.log('User joined:', user);
             this.stateManager.addUserToConnectedList(user);
             this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
         });
 
         this.socketClient.registerEventListener('user-left', (data) => {
+            console.log('User left:', data);
             this.stateManager.removeUserFromConnectedList(data.userId);
             this.uiController.removeRemoteUserCursor(data.userId);
             this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
         });
 
         this.socketClient.registerEventListener('user-list', (users) => {
+            console.log('User list received:', users);
             users.forEach(user => this.stateManager.addUserToConnectedList(user));
             this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
         });
 
-        // Initialization
+        // Initialization - FIXED
         this.socketClient.registerEventListener('init', (data) => {
+            console.log('Initial data received:', data);
             this.stateManager.initializeApplicationState(data);
             this.redrawCanvas();
             this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
@@ -112,15 +120,26 @@ class CollaborativeDrawingApp {
             this.uiController.setRedoButtonEnabled(state.canRedo);
         });
 
-        // Canvas operations
+        // Operations update - FIXED
         this.socketClient.registerEventListener('operations-update', (data) => {
+            console.log('Operations update received:', data.operations.length, 'operations');
             this.stateManager.setOperationsInList(data.operations);
             this.redrawCanvas();
         });
 
         this.socketClient.registerEventListener('canvas-cleared', () => {
+            console.log('Canvas cleared event received');
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.stateManager.setOperationsInList([]);
+        });
+
+        // User count
+        this.socketClient.registerEventListener('user-count', (count) => {
+            console.log('User count:', count);
+            const countElement = document.getElementById('user-count');
+            if (countElement) {
+                countElement.textContent = count;
+            }
         });
     }
 
@@ -200,7 +219,7 @@ class CollaborativeDrawingApp {
         // Start drawing locally
         this.drawingTool.initiateDrawing(point.x, point.y);
         
-        // Send to server
+        // Send to server - FIXED
         this.socketClient.emitDrawStartEvent({
             point: point,
             tool: this.currentOperation.tool,
@@ -235,8 +254,12 @@ class CollaborativeDrawingApp {
         this.currentOperation = null;
     }
 
-    // Remote drawing handlers
+    // Remote drawing handlers - FIXED
     handleRemoteDrawStart(data) {
+        // Don't process our own events
+        if (data.userId === this.socketClient.getUserIdentifier()) return;
+        
+        console.log('Starting remote drawing:', data);
         // Initialize remote drawing
         this.drawingTool.setDrawingColor(data.color);
         this.drawingTool.setBrushWidth(data.brushSize);
@@ -244,16 +267,25 @@ class CollaborativeDrawingApp {
     }
 
     handleRemoteDrawMove(data) {
+        // Don't process our own events
+        if (data.userId === this.socketClient.getUserIdentifier()) return;
+        
         // Continue remote drawing
         this.drawingTool.performDrawing(data.point.x, data.point.y);
     }
 
     handleRemoteDrawEnd(data) {
+        // Don't process our own events
+        if (data.userId === this.socketClient.getUserIdentifier()) return;
+        
         // Complete remote drawing
         this.drawingTool.completeDrawing();
     }
 
     handleRemoteCursorMove(data) {
+        // Don't process our own events
+        if (data.userId === this.socketClient.getUserIdentifier()) return;
+        
         // Update remote cursor position
         this.uiController.updateRemoteUserCursorPosition(data, data.color);
     }
@@ -278,6 +310,8 @@ class CollaborativeDrawingApp {
         
         // Redraw all operations
         const operations = this.stateManager.getOperationsFromList();
+        console.log('Redrawing canvas with', operations.length, 'operations');
+        
         operations.forEach(operation => {
             if (operation.points && operation.points.length > 0) {
                 this.drawingTool.setDrawingColor(operation.color);
