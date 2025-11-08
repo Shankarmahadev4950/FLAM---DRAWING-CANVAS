@@ -11,17 +11,15 @@ const io = new Server(server, {
     cors: { origin: "*" }
 });
 
-
+// ✅ Serve frontend (client folder)
 app.use(express.static(path.join(__dirname, "../client")));
 
-const socketClientPath = require.resolve("socket.io/client-dist/socket.io.js");
-app.get("/socket.io/socket.io.js", (req, res) => {
-    res.sendFile(socketClientPath);
+// ✅ Load index.html for all routes
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../client", "index.html"));
 });
 
-app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "../client/index.html"));
-});
 new SocketManager(io);
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
