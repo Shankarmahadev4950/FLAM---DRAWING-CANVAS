@@ -1,131 +1,137 @@
 class CanvasRenderingManager {
     constructor(canvasElementId, socketClientInstance) {
         this.canvasElement = document.getElementById(canvasElementId);
-        this.canvasContext = this.canvasElement.getContext('2d');
+        this.canvasContext = this.canvasElement.getContext('2d', { willReadFrequently: true });
         this.socketClientInstance = socketClientInstance;
         this.drawingToolManagerInstance = new DrawingToolManager(this.canvasContext, this.canvasElement);
         this.isCurrentlyDrawing = false;
         this.currentStrokePoints = [];
+        
+        // Performance optimization
+        this.throttleDelay = 16; // ~60fps
+        this.lastEmitTime = 0;
 
         this.initializeCanvasSetup();
         this.attachEventListenersToCanvas();
         this.configureToolButtonHandlers();
         this.setupRemoteDrawingListeners();
+        
+        console.log('✅ Canvas Manager initialized');
     }
 
     initializeCanvasSetup() {
-        const sidebarWidthPixels = 280;
-        const headerHeightPixels = 60;
+        const sidebarWidth = window.innerWidth > 768 ? 280 : 0;
+        const headerHeight = window.innerWidth > 768 ? 60 : 50;
 
-        this.canvasElement.width = window.innerWidth - sidebarWidthPixels;
-        this.canvasElement.height = window.innerHeight - headerHeightPixels;
+        this.canvasElement.width = window.innerWidth - sidebarWidth;
+        this.canvasElement.height = window.innerHeight - headerHeight;
 
         this.canvasContext.lineCap = 'round';
         this.canvasContext.lineJoin = 'round';
+        this.canvasContext.imageSmoothingEnabled = true;
+        
+        // Handle resize
+        window.addEventListener('resize', () => this.handleResize());
+    }
 
-        window.addEventListener('resize', () => {
-            this.canvasElement.width = window.innerWidth - sidebarWidthPixels;
-            this.canvasElement.height = window.innerHeight - headerHeightPixels;
-        });
+    handleResize() {
+        const sidebarWidth = window.innerWidth > 768 ? 280 : 0;
+        const headerHeight = window.innerWidth > 768 ? 60 : 50;
+        
+        const imageData = this.canvasContext.getImageData(0, 0, this.canvasElement.width, this.canvasElement.height);
+        
+        this.canvasElement.width = window.innerWidth - sidebarWidth;
+        this.canvasElement.height = window.innerHeight - headerHeight;
+        
+        this.canvasContext.putImageData(imageData, 0, 0);
     }
 
     attachEventListenersToCanvas() {
-        this.canvasElement.addEventListener('mousedown', (event) => this.handleMouseDownEvent(event));
-        this.canvasElement.addEventListener('mousemove', (event) => this.handleMouseMoveEvent(event));
-        this.canvasElement.addEventListener('mouseup', (event) => this.handleMouseUpEvent(event));
-        this.canvasElement.addEventListener('mouseout', (event) => this.handleMouseUpEvent(event));
+        // Mouse events
+        this.canvasElement.addEventListener('mousedown', (e) => this.handleMouseDownEvent(e));
+        this.canvasElement.addEventListener('mousemove', (e) => this.handleMouseMoveEvent(e));
+        this.canvasElement.addEventListener('mouseup', (e) => this.handleMouseUpEvent(e));
+        this.canvasElement.addEventListener('mouseout', (e) => this.handleMouseUpEvent(e));
 
-        this.canvasElement.addEventListener('touchstart', (event) => this.handleTouchStartEvent(event), { passive: false });
-        this.canvasElement.addEventListener('touchmove', (event) => this.handleTouchMoveEvent(event), { passive: false });
-        this.canvasElement.addEventListener('touchend', (event) => this.handleTouchEndEvent(event), { passive: false });
+        // Touch events
+        this.canvasElement.addEventListener('touchstart', (e) => this.handleTouchStartEvent(e), { passive: false });
+        this.canvasElement.addEventListener('touchmove', (e) => this.handleTouchMoveEvent(e), { passive: false });
+        this.canvasElement.addEventListener('touchend', (e) => this.handleTouchEndEvent(e), { passive: false });
     }
 
     configureToolButtonHandlers() {
-        const toolButtonElementsList = document.querySelectorAll('.tool-btn');
-        toolButtonElementsList.forEach(toolButton => {
-            toolButton.addEventListener('click', () => {
-                const selectedToolName = toolButton.dataset.tool;
-                this.selectToolFromButton(selectedToolName);
-
-                toolButtonElementsList.forEach(btn => btn.classList.remove('active'));
-                toolButton.classList.add('active');
+        const toolButtons = document.querySelectorAll('.tool-btn');
+        toolButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tool = button.dataset.tool;
+                this.selectTool(tool);
+                
+                toolButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
             });
         });
     }
 
-    selectToolFromButton(toolNameToSelect) {
-        this.drawingToolManagerInstance.switchToTool(toolNameToSelect);
-
-        if (toolNameToSelect === 'text') {
-            const userEnteredText = prompt('Enter text to draw:');
-            if (userEnteredText) {
-                this.canvasElement.addEventListener('click', (clickEvent) => {
-                    const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-                    const xCoordinateOnCanvas = clickEvent.clientX - canvasBoundingRectangle.left;
-                    const yCoordinateOnCanvas = clickEvent.clientY - canvasBoundingRectangle.top;
-                    this.drawingToolManagerInstance.drawTextAtPosition(xCoordinateOnCanvas, yCoordinateOnCanvas, userEnteredText);
-
-                    if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
-                        this.socketClientInstance.emitEventToServer('draw-end', {
-                            tool: 'text',
-                            x: xCoordinateOnCanvas,
-                            y: yCoordinateOnCanvas,
-                            text: userEnteredText,
-                            color: this.drawingToolManagerInstance.currentDrawingColor,
-                            fontSize: 16
-                        });
-                    }
-                }, { once: true });
-            }
-        }
+    selectTool(toolName) {
+        this.drawingToolManagerInstance.switchToTool(toolName);
     }
 
-    handleMouseDownEvent(mouseEvent) {
-        const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-        const xCoordinateOnCanvas = mouseEvent.clientX - canvasBoundingRectangle.left;
-        const yCoordinateOnCanvas = mouseEvent.clientY - canvasBoundingRectangle.top;
+    getCoordinates(event) {
+        const rect = this.canvasElement.getBoundingClientRect();
+        return {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
+        };
+    }
 
+    getTouchCoordinates(event) {
+        const rect = this.canvasElement.getBoundingClientRect();
+        return {
+            x: event.touches[0].clientX - rect.left,
+            y: event.touches[0].clientY - rect.top
+        };
+    }
+
+    // Mouse Handlers
+    handleMouseDownEvent(event) {
+        const { x, y } = this.getCoordinates(event);
+        
         this.isCurrentlyDrawing = true;
-        this.currentStrokePoints = [];
-        this.drawingToolManagerInstance.initiateDrawing(xCoordinateOnCanvas, yCoordinateOnCanvas);
+        this.currentStrokePoints = [{ x, y }];
+        this.drawingToolManagerInstance.initiateDrawing(x, y);
 
         if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
             this.socketClientInstance.emitDrawStartEvent({
                 tool: this.drawingToolManagerInstance.activeToolName,
-                x: xCoordinateOnCanvas,
-                y: yCoordinateOnCanvas,
+                x, y,
                 color: this.drawingToolManagerInstance.currentDrawingColor,
                 width: this.drawingToolManagerInstance.currentBrushWidth
             });
         }
     }
 
-    handleMouseMoveEvent(mouseEvent) {
+    handleMouseMoveEvent(event) {
         if (!this.drawingToolManagerInstance.isCurrentlyDrawing) return;
 
-        const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-        const xCoordinateOnCanvas = mouseEvent.clientX - canvasBoundingRectangle.left;
-        const yCoordinateOnCanvas = mouseEvent.clientY - canvasBoundingRectangle.top;
+        const { x, y } = this.getCoordinates(event);
+        const point = { x, y };
+        
+        this.currentStrokePoints.push(point);
+        this.drawingToolManagerInstance.performDrawing(x, y);
 
-        this.currentStrokePoints.push({ x: xCoordinateOnCanvas, y: yCoordinateOnCanvas });
-        this.drawingToolManagerInstance.performDrawing(xCoordinateOnCanvas, yCoordinateOnCanvas);
-
-        if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
-            this.socketClientInstance.emitDrawMoveEvent({
-                point: { x: xCoordinateOnCanvas, y: yCoordinateOnCanvas }
-            });
+        // Throttle emit for performance
+        const now = Date.now();
+        if (now - this.lastEmitTime > this.throttleDelay) {
+            if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
+                this.socketClientInstance.emitDrawMoveEvent({ point });
+            }
+            this.lastEmitTime = now;
         }
     }
 
-    handleMouseUpEvent(mouseEvent) {
+    handleMouseUpEvent(event) {
         if (!this.isCurrentlyDrawing) return;
 
-        const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-        const xCoordinateOnCanvas = mouseEvent.clientX - canvasBoundingRectangle.left;
-        const yCoordinateOnCanvas = mouseEvent.clientY - canvasBoundingRectangle.top;
-
-        this.drawingToolManagerInstance.lastRecordedPositionX = xCoordinateOnCanvas;
-        this.drawingToolManagerInstance.lastRecordedPositionY = yCoordinateOnCanvas;
         this.drawingToolManagerInstance.completeDrawing();
 
         if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
@@ -133,11 +139,7 @@ class CanvasRenderingManager {
                 tool: this.drawingToolManagerInstance.activeToolName,
                 color: this.drawingToolManagerInstance.currentDrawingColor,
                 width: this.drawingToolManagerInstance.currentBrushWidth,
-                points: this.currentStrokePoints,
-                startX: this.drawingToolManagerInstance.drawingStartPositionX,
-                startY: this.drawingToolManagerInstance.drawingStartPositionY,
-                endX: xCoordinateOnCanvas,
-                endY: yCoordinateOnCanvas
+                points: this.currentStrokePoints
             });
         }
 
@@ -145,61 +147,56 @@ class CanvasRenderingManager {
         this.currentStrokePoints = [];
     }
 
-    handleTouchStartEvent(touchEvent) {
-        touchEvent.preventDefault();
-        const firstTouchContact = touchEvent.touches;
-        const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-        const xCoordinateOnCanvas = firstTouchContact.clientX - canvasBoundingRectangle.left;
-        const yCoordinateOnCanvas = firstTouchContact.clientY - canvasBoundingRectangle.top;
-
+    // Touch Handlers
+    handleTouchStartEvent(event) {
+        event.preventDefault();
+        const { x, y } = this.getTouchCoordinates(event);
+        
         this.isCurrentlyDrawing = true;
-        this.currentStrokePoints = [];
-        this.drawingToolManagerInstance.initiateDrawing(xCoordinateOnCanvas, yCoordinateOnCanvas);
+        this.currentStrokePoints = [{ x, y }];
+        this.drawingToolManagerInstance.initiateDrawing(x, y);
 
         if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
             this.socketClientInstance.emitDrawStartEvent({
                 tool: this.drawingToolManagerInstance.activeToolName,
-                x: xCoordinateOnCanvas,
-                y: yCoordinateOnCanvas,
+                x, y,
                 color: this.drawingToolManagerInstance.currentDrawingColor,
                 width: this.drawingToolManagerInstance.currentBrushWidth
             });
         }
     }
 
-    handleTouchMoveEvent(touchEvent) {
-        touchEvent.preventDefault();
+    handleTouchMoveEvent(event) {
+        event.preventDefault();
         if (!this.drawingToolManagerInstance.isCurrentlyDrawing) return;
 
-        const firstTouchContact = touchEvent.touches;
-        const canvasBoundingRectangle = this.canvasElement.getBoundingClientRect();
-        const xCoordinateOnCanvas = firstTouchContact.clientX - canvasBoundingRectangle.left;
-        const yCoordinateOnCanvas = firstTouchContact.clientY - canvasBoundingRectangle.top;
+        const { x, y } = this.getTouchCoordinates(event);
+        const point = { x, y };
+        
+        this.currentStrokePoints.push(point);
+        this.drawingToolManagerInstance.performDrawing(x, y);
 
-        this.currentStrokePoints.push({ x: xCoordinateOnCanvas, y: yCoordinateOnCanvas });
-        this.drawingToolManagerInstance.performDrawing(xCoordinateOnCanvas, yCoordinateOnCanvas);
-
-        if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
-            this.socketClientInstance.emitDrawMoveEvent({
-                point: { x: xCoordinateOnCanvas, y: yCoordinateOnCanvas }
-            });
+        const now = Date.now();
+        if (now - this.lastEmitTime > this.throttleDelay) {
+            if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
+                this.socketClientInstance.emitDrawMoveEvent({ point });
+            }
+            this.lastEmitTime = now;
         }
     }
 
-    handleTouchEndEvent(touchEvent) {
-        touchEvent.preventDefault();
+    handleTouchEndEvent(event) {
+        event.preventDefault();
+        if (!this.isCurrentlyDrawing) return;
+
         this.drawingToolManagerInstance.completeDrawing();
 
-        if (this.isCurrentlyDrawing && this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
+        if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
             this.socketClientInstance.emitEventToServer('draw-end', {
                 tool: this.drawingToolManagerInstance.activeToolName,
                 color: this.drawingToolManagerInstance.currentDrawingColor,
                 width: this.drawingToolManagerInstance.currentBrushWidth,
-                points: this.currentStrokePoints,
-                startX: this.drawingToolManagerInstance.drawingStartPositionX,
-                startY: this.drawingToolManagerInstance.drawingStartPositionY,
-                endX: this.drawingToolManagerInstance.lastRecordedPositionX,
-                endY: this.drawingToolManagerInstance.lastRecordedPositionY
+                points: this.currentStrokePoints
             });
         }
 
@@ -217,84 +214,65 @@ class CanvasRenderingManager {
         this.socketClientInstance.registerEventListener('canvas-cleared', () => {
             this.clearCanvasContent();
         });
+
+        this.socketClientInstance.registerEventListener('draw-preview', (data) => {
+            // Real-time preview of other users drawing
+            this.drawPreviewPoint(data);
+        });
     }
 
     drawRemoteOperation(operation) {
         if (!operation || !operation.data) return;
 
-        const { tool, color, width, points, x, y, text, fontSize } = operation.data;
+        const { tool, color, width, points } = operation.data;
 
-        this.canvasContext.strokeStyle = color || '#000000';
-        this.canvasContext.lineWidth = width || 3;
-        this.canvasContext.fillStyle = color || '#000000';
+        this.canvasContext.strokeStyle = color;
+        this.canvasContext.lineWidth = width;
+        this.canvasContext.lineCap = 'round';
+        this.canvasContext.lineJoin = 'round';
 
         if (tool === 'brush' && points && points.length > 0) {
-            this.canvasContext.lineCap = 'round';
-            this.canvasContext.lineJoin = 'round';
             this.canvasContext.beginPath();
-
-            if (points.length > 0) {
-                this.canvasContext.moveTo(points.x, points.y);
-                points.forEach((point, index) => {
-                    if (index > 0) {
-                        this.canvasContext.lineTo(point.x, point.y);
-                    }
-                });
+            this.canvasContext.moveTo(points[0].x, points[0].y);
+            
+            for (let i = 1; i < points.length; i++) {
+                this.canvasContext.lineTo(points[i].x, points[i].y);
             }
+            
             this.canvasContext.stroke();
-        } else if (tool === 'line' && points && points.length >= 2) {
-            this.canvasContext.beginPath();
-            this.canvasContext.moveTo(points.x, points.y);
-            this.canvasContext.lineTo(points[points.length - 1].x, points[points.length - 1].y);
-            this.canvasContext.stroke();
-        } else if (tool === 'rectangle' && points && points.length >= 2) {
-            const rectWidth = points[points.length - 1].x - points.x;
-            const rectHeight = points[points.length - 1].y - points.y;
-            this.canvasContext.strokeRect(points.x, points.y, rectWidth, rectHeight);
-        } else if (tool === 'circle' && points && points.length >= 2) {
-            const radius = Math.sqrt(
-                Math.pow(points[points.length - 1].x - points.x, 2) +
-                Math.pow(points[points.length - 1].y - points.y, 2)
-            );
-            this.canvasContext.beginPath();
-            this.canvasContext.arc(points.x, points.y, radius, 0, 2 * Math.PI);
-            this.canvasContext.stroke();
-        } else if (tool === 'text' && text) {
-            this.canvasContext.font = `${fontSize || 16}px Arial`;
-            this.canvasContext.fillText(text, x || 0, y || 0);
         } else if (tool === 'eraser' && points && points.length > 0) {
-            points.forEach((point) => {
-                const eraserSize = width || 10;
-                this.canvasContext.clearRect(point.x - eraserSize / 2, point.y - eraserSize / 2, eraserSize, eraserSize);
-            });
+            this.canvasContext.globalCompositeOperation = 'destination-out';
+            this.canvasContext.beginPath();
+            this.canvasContext.moveTo(points[0].x, points[0].y);
+            
+            for (let i = 1; i < points.length; i++) {
+                this.canvasContext.lineTo(points[i].x, points[i].y);
+            }
+            
+            this.canvasContext.stroke();
+            this.canvasContext.globalCompositeOperation = 'source-over';
         }
     }
 
-    getCanvasElement() {
-        return this.canvasElement;
+    drawPreviewPoint(data) {
+        // Optional: Show real-time preview of other users' cursors
+        // You can implement cursor visualization here
     }
 
-    getCanvasContext() {
-        return this.canvasContext;
+    redrawAllOperations(operations) {
+        this.clearCanvasContent();
+        operations.forEach(op => this.drawRemoteOperation(op));
     }
 
-    setDrawingColor(colorHexValue) {
-        this.drawingToolManagerInstance.setDrawingColor(colorHexValue);
+    setDrawingColor(color) {
+        this.drawingToolManagerInstance.setDrawingColor(color);
     }
 
-    setBrushWidth(brushWidthInPixels) {
-        this.drawingToolManagerInstance.setBrushWidth(brushWidthInPixels);
+    setBrushWidth(width) {
+        this.drawingToolManagerInstance.setBrushWidth(width);
     }
 
     clearCanvasContent() {
         this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-    }
-
-    getCanvasImageData() {
-        return this.canvasContext.getImageData(0, 0, this.canvasElement.width, this.canvasElement.height);
-    }
-
-    restoreCanvasFromImageData(imageDataToRestore) {
-        this.canvasContext.putImageData(imageDataToRestore, 0, 0);
     }
 }
