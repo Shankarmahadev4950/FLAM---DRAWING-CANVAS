@@ -25,12 +25,11 @@ const io = new Server(server, {
 // Initializing Socket Manager
 const socketManager = new SocketManager(io);
 
-// Routes - Serve the main page from root
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../index.html'));
 });
 
-// Serving other static files
+// ✅ Serve other static files
 app.get('/js/:file', (req, res) => {
     res.sendFile(path.join(__dirname, '../js', req.params.file));
 });
