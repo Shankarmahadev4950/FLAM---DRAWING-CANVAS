@@ -6,8 +6,8 @@ class SocketManager {
         this.io = io;
         this.roomManager = new RoomManager();
         this.operationHistory = new OperationHistory();
-        this.userColors = new Map(); // Track user colors
-        this.userCursors = new Map(); // Track cursor positions
+        this.userColors = new Map();
+        this.userCursors = new Map();
         this.availableColors = [
             '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
             '#98D8C8', '#F7B731', '#5F27CD', '#00D2D3',
@@ -22,52 +22,55 @@ class SocketManager {
         this.io.on('connection', (socket) => {
             console.log('👤 New user connected:', socket.id);
             
-            // Assign a color to the user
             const userColor = this.assignUserColor(socket.id);
             
             socket.on('join', (data) => {
-                const userId = data.userId || socket.id;
-                this.roomManager.addUser(userId, socket.id);
-                this.userColors.set(userId, userColor);
-                
-                // Send initial data
-                socket.emit('init', {
-                    operations: this.operationHistory.getOperations(),
-                    users: this.roomManager.getActiveUsers(),
-                    userId: userId,
-                    userColor: userColor,
-                    cursors: Array.from(this.userCursors.entries())
-                });
-
-                // Broadcast to others
-                socket.broadcast.emit('user-joined', {
-                    id: userId,
-                    color: userColor
-                });
-
-                this.broadcastUserList();
-                console.log('✅ User joined:', userId, 'Color:', userColor);
-            });
-
-            // Cursor movement
-            socket.on('cursor-move', (data) => {
-                const userId = this.roomManager.getUserBySocketId(socket.id);
-                if (userId) {
-                    this.userCursors.set(userId, {
-                        x: data.x,
-                        y: data.y,
-                        color: this.userColors.get(userId)
+                try {
+                    const userId = data.userId || socket.id;
+                    this.roomManager.addUser(userId, socket.id);
+                    this.userColors.set(userId, userColor);
+                    
+                    socket.emit('init', {
+                        operations: this.operationHistory.getOperations(),
+                        users: this.getActiveUsersWithColors(),
+                        userId: userId,
+                        userColor: userColor,
+                        cursors: Array.from(this.userCursors.entries())
                     });
-                    socket.broadcast.emit('cursor-update', {
-                        userId,
-                        x: data.x,
-                        y: data.y,
-                        color: this.userColors.get(userId)
+
+                    socket.broadcast.emit('user-joined', {
+                        id: userId,
+                        color: userColor
                     });
+
+                    this.broadcastUserList();
+                    console.log('✅ User joined:', userId, 'Color:', userColor);
+                } catch (error) {
+                    console.error('❌ Error in join handler:', error);
                 }
             });
 
-            // Drawing events
+            socket.on('cursor-move', (data) => {
+                try {
+                    const userId = this.roomManager.getUserBySocketId(socket.id);
+                    if (userId) {
+                        this.userCursors.set(userId, {
+                            x: data.x,
+                            y: data.y,
+                            color: this.userColors.get(userId)
+                        });
+                        socket.broadcast.emit('cursor-update', {
+                            userId,
+                            x: data.x,
+                            y: data.y,
+                            color: this.userColors.get(userId)
+                        });
+                    }
+                } catch (error) {
+                    console.error('❌ Error in cursor-move:', error);
+                }
+            });
+
             socket.on('draw-start', (data) => {
                 socket.broadcast.emit('remote-draw-start', data);
             });
@@ -77,71 +80,88 @@ class SocketManager {
             });
 
             socket.on('draw-end', (data) => {
-                const operation = this.operationHistory.addOperation(data);
-                this.io.emit('operation', operation);
-                this.broadcastUndoRedoState();
+                try {
+                    const operation = this.operationHistory.addOperation(data);
+                    this.io.emit('operation', operation);
+                    this.broadcastUndoRedoState();
+                } catch (error) {
+                    console.error('❌ Error in draw-end:', error);
+                }
             });
 
-            // Global undo/redo
             socket.on('undo', () => {
-                const result = this.operationHistory.undo();
-                if (result) {
-                    this.io.emit('operations-update', {
-                        operations: this.operationHistory.getOperations()
-                    });
-                    this.broadcastUndoRedoState();
+                try {
+                    const result = this.operationHistory.undo();
+                    if (result) {
+                        this.io.emit('operations-update', {
+                            operations: this.operationHistory.getOperations()
+                        });
+                        this.broadcastUndoRedoState();
+                    }
+                } catch (error) {
+                    console.error('❌ Error in undo:', error);
                 }
             });
 
             socket.on('redo', () => {
-                const result = this.operationHistory.redo();
-                if (result) {
-                    this.io.emit('operations-update', {
-                        operations: this.operationHistory.getOperations()
-                    });
-                    this.broadcastUndoRedoState();
+                try {
+                    const result = this.operationHistory.redo();
+                    if (result) {
+                        this.io.emit('operations-update', {
+                            operations: this.operationHistory.getOperations()
+                        });
+                        this.broadcastUndoRedoState();
+                    }
+                } catch (error) {
+                    console.error('❌ Error in redo:', error);
                 }
             });
 
             socket.on('clear-all', () => {
-                this.operationHistory.clear();
-                this.io.emit('canvas-cleared');
-                this.broadcastUndoRedoState();
+                try {
+                    this.operationHistory.clear();
+                    this.io.emit('canvas-cleared');
+                    this.broadcastUndoRedoState();
+                } catch (error) {
+                    console.error('❌ Error in clear-all:', error);
+                }
             });
 
             socket.on('disconnect', () => {
-                const userId = this.roomManager.getUserBySocketId(socket.id);
-                if (userId) {
-                    this.roomManager.removeUser(userId);
-                    this.userColors.delete(userId);
-                    this.userCursors.delete(userId);
-                    this.releaseUserColor(this.userColors.get(userId));
-                    
-                    this.io.emit('user-left', { userId });
-                    this.io.emit('cursor-remove', { userId });
-                    this.broadcastUserList();
+                try {
+                    const userId = this.roomManager.getUserBySocketId(socket.id);
+                    if (userId) {
+                        this.roomManager.removeUser(userId);
+                        this.userColors.delete(userId);
+                        this.userCursors.delete(userId);
+                        
+                        this.io.emit('user-left', { userId });
+                        this.io.emit('cursor-remove', { userId });
+                        this.broadcastUserList();
+                        console.log('👋 User left:', userId);
+                    }
+                } catch (error) {
+                    console.error('❌ Error in disconnect:', error);
                 }
             });
         });
     }
 
     assignUserColor(socketId) {
-        // Find an available color
         const usedColors = new Set(this.userColors.values());
         const availableColor = this.availableColors.find(color => !usedColors.has(color));
         return availableColor || this.availableColors[Math.floor(Math.random() * this.availableColors.length)];
     }
 
-    releaseUserColor(color) {
-        // Color becomes available again
+    getActiveUsersWithColors() {
+        return this.roomManager.getActiveUsers().map(userId => ({
+            id: userId,
+            color: this.userColors.get(userId) || '#999'
+        }));
     }
 
     broadcastUserList() {
-        const users = this.roomManager.getActiveUsers().map(userId => ({
-            id: userId,
-            color: this.userColors.get(userId)
-        }));
-        
+        const users = this.getActiveUsersWithColors();
         this.io.emit('user-list', users);
         this.io.emit('user-count', users.length);
     }
@@ -154,7 +174,7 @@ class SocketManager {
     }
 
     getTotalConnectedUsersCount() {
-        return this.roomManager.getActiveUsers().length;
+        return this.roomManager.getUserCount();
     }
 }
 
