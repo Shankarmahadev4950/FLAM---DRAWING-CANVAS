@@ -1,23 +1,22 @@
-const OperationHistory = require('./OperationHistory');
-const RoomManager = require('./RoomManager');
+import OperationHistory from './OperationHistory.js';
+import RoomManager from './RoomManager.js';
 
 class SocketManager {
     constructor(io) {
         this.io = io;
         this.roomManager = new RoomManager();
-        
-        // Set history for default room
-        const defaultRoom = this.roomManager.getRoom();
-        defaultRoom.history = new OperationHistory();
+        this.operationHistory = new OperationHistory();
 
-        // User color palette
+        const defaultRoom = this.roomManager.getRoom();
+        defaultRoom.history = this.operationHistory;
+
         this.colorPalette = [
-            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
             '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
             '#F8B739', '#52C77E', '#FF6B9D', '#00D4FF'
         ];
-        this.colorIndex = 0;
 
+        this.colorIndex = 0;
         this.setupSocketHandlers();
         console.log('📡 Socket Manager initialized');
     }
@@ -25,163 +24,91 @@ class SocketManager {
     setupSocketHandlers() {
         this.io.on('connection', (socket) => {
             console.log(`🔌 Client connected: ${socket.id}`);
+            this.broadcastUserCount();
 
-            // Room management events
-            socket.on('create-room', (data) => this.handleCreateRoom(socket, data));
-            socket.on('join-room', (data) => this.handleJoinRoom(socket, data));
-            socket.on('leave-room', (data) => this.handleLeaveRoom(socket, data));
-
-            // Drawing events
             socket.on('join', (data) => this.handleJoin(socket, data));
             socket.on('draw-start', (data) => this.handleDrawStart(socket, data));
             socket.on('draw-move', (data) => this.handleDrawMove(socket, data));
             socket.on('draw-end', (data) => this.handleDrawEnd(socket, data));
             socket.on('cursor-move', (data) => this.handleCursorMove(socket, data));
+            socket.on('clear-all', (data) => this.handleClearAll(socket, data));
             socket.on('undo', (data) => this.handleUndo(socket, data));
             socket.on('redo', (data) => this.handleRedo(socket, data));
-            socket.on('clear-all', (data) => this.handleClearAll(socket, data));
-
             socket.on('disconnect', () => this.handleDisconnect(socket));
         });
     }
 
-    // Room Management
-    handleCreateRoom(socket, data) {
-        const { roomCode, userId } = data;
-        
-        if (this.roomManager.rooms.has(roomCode)) {
-            socket.emit('room-error', { message: 'Room already exists' });
-            return;
-        }
-
-        // Create new room
-        const room = this.roomManager.getRoom(roomCode);
-        room.history = new OperationHistory();
-        
-        const userColor = this.getNextColor();
-        this.roomManager.addUserToRoom(roomCode, userId, socket.id, userColor);
-        socket.join(roomCode);
-
-        socket.emit('room-created', { 
-            roomCode: roomCode,
-            users: this.roomManager.getUsersInRoom(roomCode)
-        });
-        
-        console.log(`Room ${roomCode} created by user ${userId}`);
-    }
-
-    handleJoinRoom(socket, data) {
-        const { roomCode, userId } = data;
-        const room = this.roomManager.getRoom(roomCode);
-
-        if (!room.history) {
-            socket.emit('room-error', { message: 'Room does not exist' });
-            return;
-        }
-
-        const userColor = this.getNextColor();
-        this.roomManager.addUserToRoom(roomCode, userId, socket.id, userColor);
-        socket.join(roomCode);
-
-        // Send room state to new user
-        socket.emit('room-joined', {
-            roomCode: roomCode,
-            operations: room.history.getActiveOperations(),
-            users: this.roomManager.getUsersInRoom(roomCode),
-            canUndo: room.history.canUndo(),
-            canRedo: room.history.canRedo()
-        });
-
-        // Notify room about new user
-        socket.to(roomCode).emit('user-joined', {
-            id: userId,
-            color: userColor,
-            socketId: socket.id
-        });
-
-        // Update user list for everyone in room
-        this.io.to(roomCode).emit('user-list', this.roomManager.getUsersInRoom(roomCode));
-        
-        console.log(`User ${userId} joined room ${roomCode}`);
-    }
-
-    handleLeaveRoom(socket, data) {
-        const { roomCode, userId } = data;
-        
-        this.roomManager.removeUserFromRoom(roomCode, userId);
-        socket.leave(roomCode);
-
-        socket.to(roomCode).emit('user-left', { userId: userId });
-        this.io.to(roomCode).emit('user-list', this.roomManager.getUsersInRoom(roomCode));
-        
-        console.log(`User ${userId} left room ${roomCode}`);
-    }
-
-    // Original join handler for default room
     handleJoin(socket, data) {
         const { userId } = data;
         const roomId = 'default';
+        const userColor = this.colorPalette[this.colorIndex % this.colorPalette.length];
+        this.colorIndex++;
 
-        const userColor = this.getNextColor();
         socket.join(roomId);
         this.roomManager.addUserToRoom(roomId, userId, socket.id, userColor);
 
         const room = this.roomManager.getRoom(roomId);
         const history = room.history;
 
-        // Send initial state to the new user
+        // Send initial state to joining user
         socket.emit('init', {
             operations: history.getActiveOperations(),
             users: this.roomManager.getUsersInRoom(roomId),
             canUndo: history.canUndo(),
-            canRedo: history.canRedo()
+            canRedo: history.canRedo(),
+            userId: userId,
+            userColor: userColor
         });
 
-        // Notify other users about new user
+        // Notify others
         socket.to(roomId).emit('user-joined', {
             id: userId,
-            color: userColor,
-            socketId: socket.id
+            color: userColor
         });
 
-        // Update user list for everyone
+        // Broadcast user list
         this.io.to(roomId).emit('user-list', this.roomManager.getUsersInRoom(roomId));
-        
-        console.log(`User ${userId} joined default room`);
-    }
+        this.broadcastUserCount();
 
+        console.log(`👤 User ${userId} joined room ${roomId} (Total: ${this.getTotalConnectedUsersCount()})`);
+    }
 
     handleDrawStart(socket, data) {
-        const roomData = this.roomManager.getRoomForSocket(socket.id);
-        if (!roomData) return;
-
-        // Store current operation
         socket.currentOperation = {
-            ...data,
-            points: [data.point],
-            timestamp: Date.now()
+            id: Math.random().toString(36).substr(2, 9),
+            timestamp: Date.now(),
+            userId: data.userId || socket.id,
+            tool: data.tool,
+            color: data.color,
+            width: data.width,
+            data: {
+                tool: data.tool,
+                color: data.color,
+                width: data.width,
+                points: []
+            }
         };
-
-        
-        socket.to(roomData.roomId).emit('draw-start', data);
-        
-        console.log('Draw start in room:', roomData.roomId);
     }
 
-    
     handleDrawMove(socket, data) {
-        const roomData = this.roomManager.getRoomForSocket(socket.id);
-        if (!roomData) return;
-
-        // Add point to current operation
-        if (socket.currentOperation && data.point) {
-            socket.currentOperation.points.push(data.point);
+        if (!socket.currentOperation) return;
+        
+        if (data.point) {
+            socket.currentOperation.data.points.push(data.point);
         }
-
-        socket.to(roomData.roomId).emit('draw-move', data);
+        
+        // Broadcast move in real-time for live preview
+        const roomData = this.roomManager.getRoomForSocket(socket.id);
+        if (roomData) {
+            socket.to(roomData.roomId).emit('draw-preview', {
+                userId: socket.currentOperation.userId,
+                point: data.point,
+                color: socket.currentOperation.color,
+                width: socket.currentOperation.width
+            });
+        }
     }
 
-   
     handleDrawEnd(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
@@ -190,31 +117,67 @@ class SocketManager {
         const room = this.roomManager.getRoom(roomId);
         const history = room.history;
 
-        if (!socket.currentOperation) return;
+        // Create operation if not exists
+        if (!socket.currentOperation) {
+            socket.currentOperation = {
+                id: Math.random().toString(36).substr(2, 9),
+                timestamp: Date.now(),
+                userId: socket.id,
+                tool: data.tool,
+                color: data.color,
+                width: data.width,
+                data: {
+                    tool: data.tool,
+                    color: data.color,
+                    width: data.width,
+                    points: data.points || []
+                }
+            };
+        }
 
-        // Add operation to room history
-        const operation = history.addOperation(socket.currentOperation);
-        
-        this.io.to(roomId).emit('operations-update', {
-            operations: history.getActiveOperations()
+        const operation = socket.currentOperation;
+
+        // Add to history
+        history.addOperation(operation);
+
+        // Broadcast to ALL users in room (including sender for confirmation)
+        this.io.to(roomId).emit('operation', {
+            id: operation.id,
+            data: operation.data,
+            userId: operation.userId
         });
 
+        // Update undo/redo state
         this.broadcastUndoRedoState(roomId, history);
-        delete socket.currentOperation;
 
-        console.log('Draw end in room:', roomId);
+        delete socket.currentOperation;
     }
 
     handleCursorMove(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
+
+        const { roomId } = roomData;
         
-        const { roomId, user } = roomData;
-        
+        // Broadcast to others only
         socket.to(roomId).emit('cursor-update', {
-            ...data,
-            color: user.color
+            userId: data.userId || socket.id,
+            x: data.x,
+            y: data.y,
+            color: data.color
         });
+    }
+
+    handleClearAll(socket, data) {
+        const roomData = this.roomManager.getRoomForSocket(socket.id);
+        if (!roomData) return;
+
+        const { roomId } = roomData;
+        const room = this.roomManager.getRoom(roomId);
+        
+        room.history.clear();
+        this.io.to(roomId).emit('canvas-cleared');
+        this.broadcastUndoRedoState(roomId, room.history);
     }
 
     handleUndo(socket, data) {
@@ -230,9 +193,7 @@ class SocketManager {
             this.io.to(roomId).emit('operations-update', {
                 operations: history.getActiveOperations()
             });
-            
             this.broadcastUndoRedoState(roomId, history);
-            console.log('Undo in room:', roomId);
         }
     }
 
@@ -249,38 +210,26 @@ class SocketManager {
             this.io.to(roomId).emit('operations-update', {
                 operations: history.getActiveOperations()
             });
-            
             this.broadcastUndoRedoState(roomId, history);
-            console.log('Redo in room:', roomId);
         }
-    }
-
-    handleClearAll(socket, data) {
-        const roomData = this.roomManager.getRoomForSocket(socket.id);
-        if (!roomData) return;
-
-        const { roomId } = roomData;
-        const room = this.roomManager.getRoom(roomId);
-        const history = room.history;
-
-        history.clear();
-        this.io.to(roomId).emit('canvas-cleared');
-        this.broadcastUndoRedoState(roomId, history);
-
-        console.log('Canvas cleared in room:', roomId);
     }
 
     handleDisconnect(socket) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
-        if (!roomData) return;
+        
+        if (!roomData) {
+            this.broadcastUserCount();
+            return;
+        }
 
         const { roomId, user } = roomData;
+        
         this.roomManager.removeUserFromRoom(roomId, user.id);
-
         socket.to(roomId).emit('user-left', { userId: user.id });
         this.io.to(roomId).emit('user-list', this.roomManager.getUsersInRoom(roomId));
+        this.broadcastUserCount();
 
-        console.log(`User ${user.id} disconnected from room ${roomId}`);
+        console.log(`👋 User ${user.id} disconnected (Total: ${this.getTotalConnectedUsersCount()})`);
     }
 
     broadcastUndoRedoState(roomId, history) {
@@ -290,15 +239,14 @@ class SocketManager {
         });
     }
 
-    getNextColor() {
-        const color = this.colorPalette[this.colorIndex % this.colorPalette.length];
-        this.colorIndex++;
-        return color;
+    broadcastUserCount() {
+        const count = this.io.sockets.sockets.size;
+        this.io.emit('user-count', count);
     }
 
-    getUserCount() {
-        return this.io.engine.clientsCount;
+    getTotalConnectedUsersCount() {
+        return this.io.sockets.sockets.size;
     }
 }
 
-module.exports = SocketManager;
+export default SocketManager;
