@@ -150,7 +150,7 @@ class SocketManager {
         console.log(`User ${userId} joined default room`);
     }
 
-    // ✅ FIXED: Add real-time broadcasting
+
     handleDrawStart(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
@@ -162,13 +162,13 @@ class SocketManager {
             timestamp: Date.now()
         };
 
-        // ✅ FIX: Broadcast to other users in the same room
+        
         socket.to(roomData.roomId).emit('draw-start', data);
         
         console.log('Draw start in room:', roomData.roomId);
     }
 
-    // ✅ FIXED: Add real-time movement broadcasting
+    
     handleDrawMove(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
@@ -178,11 +178,10 @@ class SocketManager {
             socket.currentOperation.points.push(data.point);
         }
 
-        // ✅ FIX: Broadcast real-time movement
         socket.to(roomData.roomId).emit('draw-move', data);
     }
 
-    // ✅ FIXED: Proper operation completion with full sync
+   
     handleDrawEnd(socket, data) {
         const roomData = this.roomManager.getRoomForSocket(socket.id);
         if (!roomData) return;
@@ -196,7 +195,6 @@ class SocketManager {
         // Add operation to room history
         const operation = history.addOperation(socket.currentOperation);
         
-        // ✅ FIX: Send full operations list for synchronization
         this.io.to(roomId).emit('operations-update', {
             operations: history.getActiveOperations()
         });
