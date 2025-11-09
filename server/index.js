@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const path = require('path');
 const SocketManager = require('./SocketManager');
 
 const app = express();
@@ -10,9 +11,10 @@ const server = http.createServer(app);
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('../client')); // Serve static files from client directory
 
-// Create Socket.IO server
+app.use(express.static(path.join(__dirname, '..')));
+
+// Creating Socket.IO server
 const io = new Server(server, {
     cors: {
         origin: "*",
@@ -20,12 +22,21 @@ const io = new Server(server, {
     }
 });
 
-// Initialize Socket Manager
+// Initializing Socket Manager
 const socketManager = new SocketManager(io);
 
-// Serve the main page
+// Routes - Serve the main page from root
 app.get('/', (req, res) => {
-    res.sendFile('index.html', { root: '../client' });
+    res.sendFile(path.join(__dirname, '../index.html'));
+});
+
+// Serving other static files
+app.get('/js/:file', (req, res) => {
+    res.sendFile(path.join(__dirname, '../js', req.params.file));
+});
+
+app.get('/styles.css', (req, res) => {
+    res.sendFile(path.join(__dirname, '../styles.css'));
 });
 
 // Health check endpoint
@@ -52,7 +63,6 @@ server.listen(PORT, () => {
     `);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received. Shutting down gracefully...');
     server.close(() => {
