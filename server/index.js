@@ -1,71 +1,66 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const path = require('path');
-const SocketManager = require('./SocketManager');
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import compression from 'compression';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import SocketManager from './SocketManager.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = http.createServer(app);
+const httpServer = createServer(app);
 
 // Middleware
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-app.use(express.static(path.join(__dirname, '..')));
+// Serve static files
+app.use(express.static(path.join(__dirname, '../client')));
 
-// Creating Socket.IO server
-const io = new Server(server, {
+// Socket.IO with optimized settings
+const io = new Server(httpServer, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    transports: ['websocket', 'polling'],
+    allowUpgrades: true
 });
 
-// Initializing Socket Manager
+// Initialize Socket Manager
 const socketManager = new SocketManager(io);
 
+// Routes
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../index.html'));
+    res.sendFile(path.join(__dirname, '../client/index.html'));
 });
 
-// ✅ Serve other static files
-app.get('/js/:file', (req, res) => {
-    res.sendFile(path.join(__dirname, '../js', req.params.file));
-});
-
-app.get('/styles.css', (req, res) => {
-    res.sendFile(path.join(__dirname, '../styles.css'));
-});
-
-// Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        users: socketManager.getUserCount(),
-        timestamp: new Date().toISOString()
+    res.json({
+        status: 'ok',
+        connectedUsers: socketManager.getTotalConnectedUsersCount(),
+        uptime: process.uptime()
     });
 });
 
-const PORT = process.env.PORT || 3001;
-
-server.listen(PORT, () => {
-    console.log(`
-╔════════════════════════════════════════╗
-║   🎨 Collaborative Drawing Server      ║
-║                                        ║
-║   ✅ Server running on port ${PORT}        ║
-║   📡 WebSocket server ready            ║
-║   🌐 CORS enabled                      ║
-║   🏠 Room system active                ║
-╚════════════════════════════════════════╝
-    `);
+// Error handling
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Shutting down gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
+const PORT = process.env.PORT || 3000;
+
+httpServer.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 WebSocket server ready`);
+    console.log(`🌐 Open http://localhost:${PORT}`);
 });
+
+export default app;
