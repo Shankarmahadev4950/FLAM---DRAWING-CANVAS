@@ -1,120 +1,93 @@
-class SocketClient {
-    constructor(serverUrl = '') {
-        
-        const url = serverUrl || window.location.origin;
-        
-        this.socket = io(url, {
+class RealtimeCommunicationClient {
+    constructor(serverUrlString) {
+        this.socketInstance = io(serverUrlString, {
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            reconnectionAttempts: 5
+            reconnectionAttempts: Infinity,
+            transports: ['websocket', 'polling']
         });
-        
-        this.userId = this.generateUserId();
+
+        this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
         this.setupConnectionHandlers();
         
-        console.log("SocketClient initialized with user ID:", this.userId);
+        console.log('🔌 Socket Client created with ID:', this.uniqueUserIdentifier);
     }
 
-    generateUserId() {
-        return `user_${Math.random().toString(36).substr(2, 9)}`;
+    generateUniqueUserIdentifier() {
+        return `user_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
     }
 
     setupConnectionHandlers() {
-        this.socket.on('connect', () => {
+        this.socketInstance.on('connect', () => {
             console.log('✅ Connected to server');
+            this.socketInstance.emit('join', {
+                userId: this.uniqueUserIdentifier
+            });
         });
 
-        this.socket.on('disconnect', () => {
-            console.log('❌ Disconnected from server');
+        this.socketInstance.on('disconnect', (reason) => {
+            console.log('❌ Disconnected from server:', reason);
         });
 
-        this.socket.on('connect_error', (error) => {
+        this.socketInstance.on('connect_error', (error) => {
             console.error('🔴 Connection error:', error);
         });
-    }
 
-    on(event, callback) {
-        this.socket.on(event, callback);
-    }
+        this.socketInstance.on('reconnect', (attemptNumber) => {
+            console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+        });
 
-    emit(event, data) {
-        this.socket.emit(event, data);
-    }
-
-    getUserId() {
-        return this.userId;
-    }
-
-    isConnected() {
-        return this.socket.connected;
-    }
-
-    
-    emitDrawStart(operation) {
-        this.emit('draw-start', { 
-            ...operation, 
-            userId: this.userId 
+        // User count listener
+        this.socketInstance.on('user-count', (count) => {
+            console.log('👥 Total users:', count);
+            this.updateUserCountDisplay(count);
         });
     }
 
-    emitDrawMove(points) {
-        this.emit('draw-move', { 
-            ...points, 
-            userId: this.userId 
+    updateUserCountDisplay(count) {
+        const onlineCount = document.querySelector('.online-count');
+        if (onlineCount && !document.getElementById('user-list').children.length) {
+            onlineCount.textContent = `${count} Online`;
+        }
+    }
+
+    registerEventListener(eventName, callbackFunction) {
+        this.socketInstance.on(eventName, callbackFunction);
+    }
+
+    emitEventToServer(eventName, dataPayload) {
+        if (this.socketInstance.connected) {
+            this.socketInstance.emit(eventName, dataPayload);
+        }
+    }
+
+    emitDrawStartEvent(drawingData) {
+        this.emitEventToServer('draw-start', {
+            ...drawingData,
+            userId: this.uniqueUserIdentifier
         });
     }
 
-    emitDrawEnd() {
-        this.emit('draw-end', { 
-            userId: this.userId 
-        });
+    emitDrawMoveEvent(pointData) {
+        this.emitEventToServer('draw-move', pointData);
     }
 
-    emitCursorMove(position) {
-        this.emit('cursor-move', { 
-            ...position, 
-            userId: this.userId 
-        });
+    emitDrawEndEvent(strokeData) {
+        this.emitEventToServer('draw-end', strokeData);
     }
 
-    emitUndo() {
-        this.emit('undo', { 
-            userId: this.userId 
-        });
+    isSocketConnected() {
+        return this.socketInstance && this.socketInstance.connected;
     }
 
-    emitRedo() {
-        this.emit('redo', { 
-            userId: this.userId 
-        });
+    getUserIdentifier() {
+        return this.uniqueUserIdentifier;
     }
 
-    emitClearAll() {
-        this.emit('clear-all', { 
-            userId: this.userId 
-        });
-    }
-
-    // Room management methods
-    emitCreateRoom(roomCode) {
-        this.emit('create-room', {
-            roomCode: roomCode,
-            userId: this.userId
-        });
-    }
-
-    emitJoinRoom(roomCode) {
-        this.emit('join-room', {
-            roomCode: roomCode,
-            userId: this.userId
-        });
-    }
-
-    emitLeaveRoom(roomCode) {
-        this.emit('leave-room', {
-            roomCode: roomCode,
-            userId: this.userId
-        });
+    disconnect() {
+        if (this.socketInstance) {
+            this.socketInstance.disconnect();
+        }
     }
 }
