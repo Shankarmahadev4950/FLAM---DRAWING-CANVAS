@@ -1,6 +1,5 @@
 class RealtimeCommunicationClient {
     constructor(serverUrl = '') {
-        // Use current origin if no server URL provided (for deployed environment)
         const url = serverUrl || window.location.origin;
         this.socketInstance = io(url, {
             reconnection: true,
@@ -10,7 +9,6 @@ class RealtimeCommunicationClient {
         });
 
         this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
-
         this.setupConnectionHandlers();
         this.setupUserCountListener();
 
@@ -18,7 +16,7 @@ class RealtimeCommunicationClient {
     }
 
     generateUniqueUserIdentifier() {
-        return `user_${Math.random().toString(36).substring(2, 11)}`;
+        return `user_${Math.random().toString(36).substring(2, 8)}`;
     }
 
     setupConnectionHandlers() {
@@ -39,7 +37,7 @@ class RealtimeCommunicationClient {
         this.socketInstance.on("user-count", (count) => {
             const countElement = document.getElementById("user-count");
             if (countElement) {
-                countElement.innerText = count;
+                countElement.textContent = count;
             }
             console.log("Active Users Connected:", count);
         });
@@ -50,59 +48,48 @@ class RealtimeCommunicationClient {
     }
 
     emitEventToServer(eventNameToEmit, eventDataObject) {
-        this.socketInstance.emit(eventNameToEmit, eventDataObject);
+        const dataWithUserId = {
+            ...eventDataObject,
+            userId: this.uniqueUserIdentifier
+        };
+        
+        console.log(`Emitting ${eventNameToEmit}:`, dataWithUserId);
+        this.socketInstance.emit(eventNameToEmit, dataWithUserId);
     }
 
     getUserIdentifier() {
         return this.uniqueUserIdentifier;
     }
 
-    isSocketConnected() {
-        return this.socketInstance.connected;
+    isConnected() {
+        return this.socketInstance && this.socketInstance.connected;
     }
 
     emitDrawStartEvent(operationDataObject) {
-        this.emitEventToServer("draw-start", { 
-            ...operationDataObject, 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("draw-start", operationDataObject);
     }
 
     emitDrawMoveEvent(pointsDataObject) {
-        this.emitEventToServer("draw-move", {
-            ...pointsDataObject,
-            userId: this.uniqueUserIdentifier
-        });
+        this.emitEventToServer("draw-move", pointsDataObject);
     }
 
     emitDrawEndEvent() {
-        this.emitEventToServer("draw-end", { 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("draw-end", {});
     }
 
     emitCursorPositionEvent(positionDataObject) {
-        this.emitEventToServer("cursor-move", { 
-            ...positionDataObject, 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("cursor-move", positionDataObject);
     }
 
     emitUndoActionEvent() {
-        this.emitEventToServer("undo", { 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("undo", {});
     }
 
     emitRedoActionEvent() {
-        this.emitEventToServer("redo", { 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("redo", {});
     }
 
     emitClearCanvasEvent() {
-        this.emitEventToServer("clear-all", { 
-            userId: this.uniqueUserIdentifier 
-        });
+        this.emitEventToServer("clear-all", {});
     }
 }
