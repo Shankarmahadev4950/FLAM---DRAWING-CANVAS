@@ -1,23 +1,21 @@
-/**
- * RoomManager handles multiple drawing rooms/sessions
- */
 class RoomManager {
     constructor() {
         this.rooms = new Map();
-        this.defaultRoomId = 'default';
-        
-        // Initialize default room
-        this.getRoom(this.defaultRoomId);
+        this.rooms.set('default', {
+            id: 'default',
+            users: new Map(),
+            history: null,
+            createdAt: Date.now()
+        });
     }
 
-    getRoom(roomId = this.defaultRoomId) {
+    getRoom(roomId = 'default') {
         if (!this.rooms.has(roomId)) {
             this.rooms.set(roomId, {
                 id: roomId,
                 users: new Map(),
                 history: null,
-                createdAt: new Date(),
-                isActive: true
+                createdAt: Date.now()
             });
         }
         return this.rooms.get(roomId);
@@ -25,28 +23,19 @@ class RoomManager {
 
     addUserToRoom(roomId, userId, socketId, color) {
         const room = this.getRoom(roomId);
-        room.users.set(userId, { 
-            id: userId, 
-            socketId, 
+        room.users.set(userId, {
+            id: userId,
+            socketId,
             color,
-            joinedAt: new Date()
+            joinedAt: Date.now()
         });
-        return room;
     }
 
     removeUserFromRoom(roomId, userId) {
         const room = this.getRoom(roomId);
-        const user = room.users.get(userId);
-        if (user) {
+        if (room) {
             room.users.delete(userId);
-            
-            // Clean up empty rooms (except default)
-            if (roomId !== this.defaultRoomId && room.users.size === 0) {
-                this.rooms.delete(roomId);
-                console.log(`Room ${roomId} deleted (no users)`);
-            }
         }
-        return room;
     }
 
     getUsersInRoom(roomId) {
@@ -55,8 +44,8 @@ class RoomManager {
     }
 
     getRoomForSocket(socketId) {
-        for (const [roomId, room] of this.rooms.entries()) {
-            for (const user of room.users.values()) {
+        for (const [roomId, room] of this.rooms) {
+            for (const [userId, user] of room.users) {
                 if (user.socketId === socketId) {
                     return { roomId, user };
                 }
@@ -65,22 +54,9 @@ class RoomManager {
         return null;
     }
 
-    getUserRoom(userId) {
-        for (const [roomId, room] of this.rooms.entries()) {
-            if (room.users.has(userId)) {
-                return roomId;
-            }
-        }
-        return null;
-    }
-
     getAllRooms() {
-        return Array.from(this.rooms.values());
-    }
-
-    getActiveRooms() {
-        return this.getAllRooms().filter(room => room.users.size > 0);
+        return Array.from(this.rooms.keys());
     }
 }
 
-module.exports = RoomManager;
+export default RoomManager;
