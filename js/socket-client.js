@@ -1,95 +1,120 @@
-class RealtimeCommunicationClient {
+class SocketClient {
     constructor(serverUrl = '') {
+        // ✅ FIX: Use current origin for production, fallback for development
         const url = serverUrl || window.location.origin;
-        this.socketInstance = io(url, {
+        
+        this.socket = io(url, {
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             reconnectionAttempts: 5
         });
-
-        this.uniqueUserIdentifier = this.generateUniqueUserIdentifier();
+        
+        this.userId = this.generateUserId();
         this.setupConnectionHandlers();
-        this.setupUserCountListener();
-
-        console.log("RealtimeCommunicationClient initialized with user ID:", this.uniqueUserIdentifier);
+        
+        console.log("SocketClient initialized with user ID:", this.userId);
     }
 
-    generateUniqueUserIdentifier() {
-        return `user_${Math.random().toString(36).substring(2, 8)}`;
+    generateUserId() {
+        return `user_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     setupConnectionHandlers() {
-        this.socketInstance.on("connect", () => {
-            console.log("Connected to WebSocket Server ✅");
+        this.socket.on('connect', () => {
+            console.log('✅ Connected to server');
         });
 
-        this.socketInstance.on("disconnect", () => {
-            console.log("Disconnected from WebSocket Server ❌");
+        this.socket.on('disconnect', () => {
+            console.log('❌ Disconnected from server');
         });
 
-        this.socketInstance.on("connect_error", (errorObject) => {
-            console.error("WebSocket Connection Error:", errorObject);
-        });
-    }
-
-    setupUserCountListener() {
-        this.socketInstance.on("user-count", (count) => {
-            const countElement = document.getElementById("user-count");
-            if (countElement) {
-                countElement.textContent = count;
-            }
-            console.log("Active Users Connected:", count);
+        this.socket.on('connect_error', (error) => {
+            console.error('🔴 Connection error:', error);
         });
     }
 
-    registerEventListener(eventNameToListen, callbackFunction) {
-        this.socketInstance.on(eventNameToListen, callbackFunction);
+    on(event, callback) {
+        this.socket.on(event, callback);
     }
 
-    emitEventToServer(eventNameToEmit, eventDataObject) {
-        const dataWithUserId = {
-            ...eventDataObject,
-            userId: this.uniqueUserIdentifier
-        };
-        
-        console.log(`Emitting ${eventNameToEmit}:`, dataWithUserId);
-        this.socketInstance.emit(eventNameToEmit, dataWithUserId);
+    emit(event, data) {
+        this.socket.emit(event, data);
     }
 
-    getUserIdentifier() {
-        return this.uniqueUserIdentifier;
+    getUserId() {
+        return this.userId;
     }
 
     isConnected() {
-        return this.socketInstance && this.socketInstance.connected;
+        return this.socket.connected;
     }
 
-    emitDrawStartEvent(operationDataObject) {
-        this.emitEventToServer("draw-start", operationDataObject);
+    // ✅ FIXED: Match server expected format
+    emitDrawStart(operation) {
+        this.emit('draw-start', { 
+            ...operation, 
+            userId: this.userId 
+        });
     }
 
-    emitDrawMoveEvent(pointsDataObject) {
-        this.emitEventToServer("draw-move", pointsDataObject);
+    emitDrawMove(points) {
+        this.emit('draw-move', { 
+            ...points, 
+            userId: this.userId 
+        });
     }
 
-    emitDrawEndEvent() {
-        this.emitEventToServer("draw-end", {});
+    emitDrawEnd() {
+        this.emit('draw-end', { 
+            userId: this.userId 
+        });
     }
 
-    emitCursorPositionEvent(positionDataObject) {
-        this.emitEventToServer("cursor-move", positionDataObject);
+    emitCursorMove(position) {
+        this.emit('cursor-move', { 
+            ...position, 
+            userId: this.userId 
+        });
     }
 
-    emitUndoActionEvent() {
-        this.emitEventToServer("undo", {});
+    emitUndo() {
+        this.emit('undo', { 
+            userId: this.userId 
+        });
     }
 
-    emitRedoActionEvent() {
-        this.emitEventToServer("redo", {});
+    emitRedo() {
+        this.emit('redo', { 
+            userId: this.userId 
+        });
     }
 
-    emitClearCanvasEvent() {
-        this.emitEventToServer("clear-all", {});
+    emitClearAll() {
+        this.emit('clear-all', { 
+            userId: this.userId 
+        });
+    }
+
+    // Room management methods
+    emitCreateRoom(roomCode) {
+        this.emit('create-room', {
+            roomCode: roomCode,
+            userId: this.userId
+        });
+    }
+
+    emitJoinRoom(roomCode) {
+        this.emit('join-room', {
+            roomCode: roomCode,
+            userId: this.userId
+        });
+    }
+
+    emitLeaveRoom(roomCode) {
+        this.emit('leave-room', {
+            roomCode: roomCode,
+            userId: this.userId
+        });
     }
 }
