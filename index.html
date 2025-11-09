@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collaborative Drawing App</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app">
@@ -13,13 +13,13 @@
 
             <div class="tool-group">
                 <label>Tool:</label>
-                <button id="brush-btn" class="tool-btn active" data-tool="brush">
+                <button class="tool-btn active" data-tool="brush">
                     <svg width="20" height="20" viewBox="0 0 20 20">
                         <path d="M15 2l3 3-9 9-3-3z" fill="currentColor"/>
                     </svg>
                     Brush
                 </button>
-                <button id="eraser-btn" class="tool-btn" data-tool="eraser">
+                <button class="tool-btn" data-tool="eraser">
                     <svg width="20" height="20" viewBox="0 0 20 20">
                         <rect x="2" y="8" width="16" height="8" fill="currentColor"/>
                     </svg>
@@ -112,11 +112,6 @@
                     👥 <span id="user-count">0</span> Users Online
                 </div>
 
-                <div class="performance-box">
-                    FPS: <span id="performance-fps">0</span> | 
-                    Latency: <span id="performance-latency">0ms</span>
-                </div>
-
                 <div class="user-list">
                     <label>Active Users:</label>
                     <div id="users-container"></div>
@@ -134,12 +129,12 @@
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="./js/state-manager.js"></script>
-    <script src="./js/socket-client.js"></script>
-    <script src="./js/drawing-tool.js"></script>
-    <script src="./js/ui-controller.js"></script>
-    <script src="./js/FEATURE_room-manager.js"></script>
-    <script src="./js/app.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/state-manager.js"></script>
+    <script src="js/socket-client.js"></script>
+    <script src="js/drawing-tool.js"></script>
+    <script src="js/ui-controller.js"></script>
+    <script src="js/FEATURE_room-manager.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
