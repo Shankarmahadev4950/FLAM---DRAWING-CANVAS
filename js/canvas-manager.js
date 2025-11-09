@@ -1,14 +1,18 @@
 class CanvasRenderingManager {
     constructor(canvasElementId, socketClientInstance) {
         this.canvasElement = document.getElementById(canvasElementId);
-        this.canvasContext = this.canvasElement.getContext('2d', { willReadFrequently: true });
+        
+        // ✅ FIX: Add willReadFrequently option
+        this.canvasContext = this.canvasElement.getContext('2d', { 
+            willReadFrequently: true 
+        });
+        
         this.socketClientInstance = socketClientInstance;
         this.drawingToolManagerInstance = new DrawingToolManager(this.canvasContext, this.canvasElement);
         this.isCurrentlyDrawing = false;
         this.currentStrokePoints = [];
         
-        // Performance optimization
-        this.throttleDelay = 16; // ~60fps
+        this.throttleDelay = 16;
         this.lastEmitTime = 0;
 
         this.initializeCanvasSetup();
@@ -20,40 +24,37 @@ class CanvasRenderingManager {
     }
 
     initializeCanvasSetup() {
-        const sidebarWidth = window.innerWidth > 768 ? 280 : 0;
-        const headerHeight = window.innerWidth > 768 ? 60 : 50;
+        const sidebarWidth = window.innerWidth > 768 ? 350 : 0;
+        const headerHeight = 65;
 
-        this.canvasElement.width = window.innerWidth - sidebarWidth;
-        this.canvasElement.height = window.innerHeight - headerHeight;
+        this.canvasElement.width = window.innerWidth - sidebarWidth - 40;
+        this.canvasElement.height = window.innerHeight - headerHeight - 40;
 
         this.canvasContext.lineCap = 'round';
         this.canvasContext.lineJoin = 'round';
         this.canvasContext.imageSmoothingEnabled = true;
         
-        // Handle resize
         window.addEventListener('resize', () => this.handleResize());
     }
 
     handleResize() {
-        const sidebarWidth = window.innerWidth > 768 ? 280 : 0;
-        const headerHeight = window.innerWidth > 768 ? 60 : 50;
+        const sidebarWidth = window.innerWidth > 768 ? 350 : 0;
+        const headerHeight = 65;
         
         const imageData = this.canvasContext.getImageData(0, 0, this.canvasElement.width, this.canvasElement.height);
         
-        this.canvasElement.width = window.innerWidth - sidebarWidth;
-        this.canvasElement.height = window.innerHeight - headerHeight;
+        this.canvasElement.width = window.innerWidth - sidebarWidth - 40;
+        this.canvasElement.height = window.innerHeight - headerHeight - 40;
         
         this.canvasContext.putImageData(imageData, 0, 0);
     }
 
     attachEventListenersToCanvas() {
-        // Mouse events
         this.canvasElement.addEventListener('mousedown', (e) => this.handleMouseDownEvent(e));
         this.canvasElement.addEventListener('mousemove', (e) => this.handleMouseMoveEvent(e));
         this.canvasElement.addEventListener('mouseup', (e) => this.handleMouseUpEvent(e));
         this.canvasElement.addEventListener('mouseout', (e) => this.handleMouseUpEvent(e));
 
-        // Touch events
         this.canvasElement.addEventListener('touchstart', (e) => this.handleTouchStartEvent(e), { passive: false });
         this.canvasElement.addEventListener('touchmove', (e) => this.handleTouchMoveEvent(e), { passive: false });
         this.canvasElement.addEventListener('touchend', (e) => this.handleTouchEndEvent(e), { passive: false });
@@ -92,7 +93,6 @@ class CanvasRenderingManager {
         };
     }
 
-    // Mouse Handlers
     handleMouseDownEvent(event) {
         const { x, y } = this.getCoordinates(event);
         
@@ -119,7 +119,6 @@ class CanvasRenderingManager {
         this.currentStrokePoints.push(point);
         this.drawingToolManagerInstance.performDrawing(x, y);
 
-        // Throttle emit for performance
         const now = Date.now();
         if (now - this.lastEmitTime > this.throttleDelay) {
             if (this.socketClientInstance && this.socketClientInstance.isSocketConnected()) {
@@ -147,7 +146,6 @@ class CanvasRenderingManager {
         this.currentStrokePoints = [];
     }
 
-    // Touch Handlers
     handleTouchStartEvent(event) {
         event.preventDefault();
         const { x, y } = this.getTouchCoordinates(event);
@@ -208,6 +206,7 @@ class CanvasRenderingManager {
         if (!this.socketClientInstance) return;
 
         this.socketClientInstance.registerEventListener('operation', (operation) => {
+            console.log('✏️ Drawing received:', operation);
             this.drawRemoteOperation(operation);
         });
 
@@ -215,9 +214,8 @@ class CanvasRenderingManager {
             this.clearCanvasContent();
         });
 
-        this.socketClientInstance.registerEventListener('draw-preview', (data) => {
-            // Real-time preview of other users drawing
-            this.drawPreviewPoint(data);
+        this.socketClientInstance.registerEventListener('operations-update', (data) => {
+            this.redrawAllOperations(data.operations);
         });
     }
 
@@ -254,11 +252,6 @@ class CanvasRenderingManager {
         }
     }
 
-    drawPreviewPoint(data) {
-        // Optional: Show real-time preview of other users' cursors
-        // You can implement cursor visualization here
-    }
-
     redrawAllOperations(operations) {
         this.clearCanvasContent();
         operations.forEach(op => this.drawRemoteOperation(op));
@@ -276,3 +269,5 @@ class CanvasRenderingManager {
         this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
     }
 }
+
+console.log('✅ canvas-manager.js loaded');
