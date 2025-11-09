@@ -6,7 +6,7 @@ class CollaborativeDrawingApp {
         // Initialize components
         this.socketClient = new RealtimeCommunicationClient();
         this.stateManager = new ApplicationStateManager();
-        this.drawingTool = new DrawingToolManager(this.ctx, this.canvas);
+        this.drawingTool = new DrawingTool(this.ctx, this.canvas, this.socketClient);
         this.uiController = new UserInterfaceController(
             (tool) => this.onToolChange(tool),
             (color) => this.onColorChange(color),
@@ -28,6 +28,25 @@ class CollaborativeDrawingApp {
         console.log('Collaborative Drawing App initialized');
     }
 
+    setupCanvas() {
+        // Set canvas dimensions
+        this.canvas.width = window.innerWidth - 300;
+        this.canvas.height = window.innerHeight - 100;
+
+        // Set default drawing styles
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        
+        // Add event listeners
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', () => this.handleMouseUp());
+        this.canvas.addEventListener('mouseleave', () => this.handleMouseUp());
+
+        // Window resize
+        window.addEventListener('resize', () => this.handleResize());
+    }
+
     setupSocketListeners() {
         // Connection events
         this.socketClient.registerEventListener('connect', () => {
@@ -40,64 +59,93 @@ class CollaborativeDrawingApp {
             this.uiController.setConnectionStatusIndicator(false);
         });
 
-        // Room-specific drawing events
-        this.socketClient.registerEventListener('room-draw-start', (data) => {
-            console.log('Room draw start:', data);
+        // Drawing events
+        this.socketClient.registerEventListener('draw-start', (data) => {
+            if (data.userId === this.socketClient.getUserIdentifier()) return;
             this.handleRemoteDrawStart(data);
         });
 
-        this.socketClient.registerEventListener('room-draw-move', (data) => {
+        this.socketClient.registerEventListener('draw-move', (data) => {
+            if (data.userId === this.socketClient.getUserIdentifier()) return;
             this.handleRemoteDrawMove(data);
         });
 
-        this.socketClient.registerEventListener('room-draw-end', (data) => {
-            console.log('Room draw end:', data);
+        this.socketClient.registerEventListener('draw-end', (data) => {
+            if (data.userId === this.socketClient.getUserIdentifier()) return;
             this.handleRemoteDrawEnd(data);
         });
 
-        // Room operations update
-        this.socketClient.registerEventListener('room-operations-update', (data) => {
-            console.log('Room operations update:', data.operations.length, 'operations');
+        // User management
+        this.socketClient.registerEventListener('user-joined', (user) => {
+            this.stateManager.addUserToConnectedList(user);
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        this.socketClient.registerEventListener('user-left', (data) => {
+            this.stateManager.removeUserFromConnectedList(data.userId);
+            this.uiController.removeRemoteUserCursor(data.userId);
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        this.socketClient.registerEventListener('user-list', (users) => {
+            users.forEach(user => this.stateManager.addUserToConnectedList(user));
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        });
+
+        // Operations and state
+        this.socketClient.registerEventListener('operations-update', (data) => {
             this.stateManager.setOperationsInList(data.operations);
             this.redrawCanvas();
         });
 
-        this.socketClient.registerEventListener('room-canvas-cleared', () => {
-            console.log('Room canvas cleared');
+        this.socketClient.registerEventListener('canvas-cleared', () => {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.stateManager.setOperationsInList([]);
         });
 
-        // Existing event listeners for backward compatibility
-        this.socketClient.registerEventListener('draw-start', (data) => {
-            if (!this.roomManager.getCurrentActiveRoom()) {
-                this.handleRemoteDrawStart(data);
-            }
+        this.socketClient.registerEventListener('undo-redo-state', (state) => {
+            this.uiController.setUndoButtonEnabled(state.canUndo);
+            this.uiController.setRedoButtonEnabled(state.canRedo);
         });
 
-        this.socketClient.registerEventListener('draw-move', (data) => {
-            if (!this.roomManager.getCurrentActiveRoom()) {
-                this.handleRemoteDrawMove(data);
+        // User count
+        this.socketClient.registerEventListener('user-count', (count) => {
+            const countElement = document.getElementById('user-count');
+            if (countElement) {
+                countElement.textContent = count;
             }
         });
-
-        this.socketClient.registerEventListener('draw-end', (data) => {
-            if (!this.roomManager.getCurrentActiveRoom()) {
-                this.handleRemoteDrawEnd(data);
-            }
-        });
-
-        this.socketClient.registerEventListener('operations-update', (data) => {
-            if (!this.roomManager.getCurrentActiveRoom()) {
-                this.stateManager.setOperationsInList(data.operations);
-                this.redrawCanvas();
-            }
-        });
-
-        // ... rest of the existing socket listeners
     }
 
-    // Modified drawing methods to use room broadcasting
+    // Drawing handlers
+    handleMouseDown(e) {
+        if (e.button !== 0) return;
+        const point = this.getCanvasPoint(e);
+        this.startDrawing(point);
+    }
+
+    handleMouseMove(e) {
+        const point = this.getCanvasPoint(e);
+        
+        if (this.isDrawing) {
+            this.continueDrawing(point);
+        }
+        
+        this.socketClient.emitCursorPositionEvent(point);
+    }
+
+    handleMouseUp() {
+        this.finishDrawing();
+    }
+
+    getCanvasPoint(input) {
+        const rect = this.canvas.getBoundingClientRect();
+        return {
+            x: input.clientX - rect.left,
+            y: input.clientY - rect.top
+        };
+    }
+
     startDrawing(point) {
         this.isDrawing = true;
         
@@ -110,97 +158,100 @@ class CollaborativeDrawingApp {
             timestamp: Date.now()
         };
 
-        // Start drawing locally
-        this.drawingTool.initiateDrawing(point.x, point.y);
-        
-        // Send to server - use room broadcast if in a room
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-draw-start', {
-                point: point,
-                tool: this.currentOperation.tool,
-                color: this.currentOperation.color,
-                brushSize: this.currentOperation.brushSize,
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitDrawStartEvent({
-                point: point,
-                tool: this.currentOperation.tool,
-                color: this.currentOperation.color,
-                brushSize: this.currentOperation.brushSize
-            });
-        }
+        this.drawingTool.startDrawing(point.x, point.y);
+        this.socketClient.emitDrawStartEvent({
+            point: point,
+            tool: this.currentOperation.tool,
+            color: this.currentOperation.color,
+            brushSize: this.currentOperation.brushSize
+        });
     }
 
     continueDrawing(point) {
         if (!this.isDrawing) return;
         
         this.currentOperation.points.push(point);
-        
-        // Continue drawing locally
-        this.drawingTool.performDrawing(point.x, point.y);
-        
-        // Send to server - use room broadcast if in a room
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-draw-move', {
-                point: point,
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitDrawMoveEvent({
-                point: point
-            });
-        }
+        this.drawingTool.draw(point.x, point.y);
+        this.socketClient.emitDrawMoveEvent({ point: point });
     }
 
     finishDrawing() {
         if (!this.isDrawing) return;
         
         this.isDrawing = false;
-        this.drawingTool.completeDrawing();
-        
-        // Send to server - use room broadcast if in a room
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-draw-end', {
-                operation: this.currentOperation,
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitDrawEndEvent();
-        }
-        
+        this.drawingTool.endDrawing();
+        this.socketClient.emitDrawEndEvent();
         this.currentOperation = null;
     }
 
+    // Remote drawing handlers
+    handleRemoteDrawStart(data) {
+        this.drawingTool.setColor(data.color);
+        this.drawingTool.setWidth(data.brushSize);
+        this.drawingTool.startDrawing(data.point.x, data.point.y);
+    }
+
+    handleRemoteDrawMove(data) {
+        this.drawingTool.draw(data.point.x, data.point.y);
+    }
+
+    handleRemoteDrawEnd(data) {
+        this.drawingTool.endDrawing();
+    }
+
+    handleResize() {
+        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        this.canvas.width = window.innerWidth - 300;
+        this.canvas.height = window.innerHeight - 100;
+        this.ctx.putImageData(imageData, 0, 0);
+    }
+
+    redrawCanvas() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const operations = this.stateManager.getOperationsFromList();
+        
+        operations.forEach(operation => {
+            if (operation.points && operation.points.length > 0) {
+                this.drawingTool.setColor(operation.color);
+                this.drawingTool.setWidth(operation.brushSize);
+                
+                // Replay the drawing
+                this.drawingTool.startDrawing(operation.points[0].x, operation.points[0].y);
+                for (let i = 1; i < operation.points.length; i++) {
+                    this.drawingTool.draw(operation.points[i].x, operation.points[i].y);
+                }
+                this.drawingTool.endDrawing();
+            }
+        });
+    }
+
+    // UI callbacks
+    onToolChange(tool) {
+        this.drawingTool.setTool(tool);
+    }
+
+    onColorChange(color) {
+        this.drawingTool.setColor(color);
+    }
+
+    onWidthChange(width) {
+        this.drawingTool.setWidth(width);
+    }
+
     onUndo() {
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-undo', {
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitUndoActionEvent();
-        }
+        this.socketClient.emitUndoActionEvent();
     }
 
     onRedo() {
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-redo', {
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitRedoActionEvent();
-        }
+        this.socketClient.emitRedoActionEvent();
     }
 
     onClear() {
-        if (this.roomManager.getCurrentActiveRoom()) {
-            this.socketClient.emitEventToServer('room-clear-all', {
-                roomCode: this.roomManager.getCurrentActiveRoom()
-            });
-        } else {
-            this.socketClient.emitClearCanvasEvent();
-        }
+        this.socketClient.emitClearCanvasEvent();
     }
-
-    // ... rest of the existing methods
 }
+
+// Initialize application
+document.addEventListener('DOMContentLoaded', () => {
+    window.drawingApp = new CollaborativeDrawingApp();
+});
