@@ -4,31 +4,28 @@ class CollaborativeRoomManager {
         this.stateManager = stateManager;
         this.uiController = uiController;
         this.currentActiveRoomCode = null;
-        this.roomsCollection = {};
         this.setupRoomEventHandlers();
         this.setupSocketListeners();
     }
 
     setupRoomEventHandlers() {
-        const joinRoomButtonElement = document.getElementById('join-room-btn');
-        const createRoomButtonElement = document.getElementById('create-room-btn');
-        const roomCodeDisplayElement = document.getElementById('room-code-display');
+        const joinRoomButton = document.getElementById('join-room-btn');
+        const createRoomButton = document.getElementById('create-room-btn');
         
-        if (joinRoomButtonElement) {
-            joinRoomButtonElement.addEventListener('click', () => {
+        if (joinRoomButton) {
+            joinRoomButton.addEventListener('click', () => {
                 this.joinCollaborativeRoom();
             });
         }
         
-        if (createRoomButtonElement) {
-            createRoomButtonElement.addEventListener('click', () => {
+        if (createRoomButton) {
+            createRoomButton.addEventListener('click', () => {
                 this.createNewRoom();
             });
         }
     }
 
     setupSocketListeners() {
-        // Room management events
         this.socketClient.registerEventListener('room-created', (data) => {
             this.handleRoomCreated(data);
         });
@@ -37,30 +34,17 @@ class CollaborativeRoomManager {
             this.handleRoomJoined(data);
         });
 
-        this.socketClient.registerEventListener('room-user-joined', (data) => {
-            this.handleRoomUserJoined(data);
-        });
-
-        this.socketClient.registerEventListener('room-user-left', (data) => {
-            this.handleRoomUserLeft(data);
-        });
-
-        this.socketClient.registerEventListener('room-users-update', (data) => {
-            this.handleRoomUsersUpdate(data);
-        });
-
         this.socketClient.registerEventListener('room-error', (data) => {
             this.handleRoomError(data);
         });
     }
 
     createNewRoom() {
-        // Generate a random room code
         const roomCode = this.generateRoomCode();
         this.socketClient.emitEventToServer('create-room', { 
-            roomCode: roomCode,
-            userId: this.socketClient.getUserIdentifier()
+            roomCode: roomCode
         });
+        console.log('Creating room:', roomCode);
     }
 
     joinCollaborativeRoom(roomCodeValue = null) {
@@ -72,21 +56,19 @@ class CollaborativeRoomManager {
         }
         
         if (roomCodeToJoin === this.currentActiveRoomCode) {
-            return; // Already in this room
+            return;
         }
         
         console.log('Attempting to join room:', roomCodeToJoin);
         this.socketClient.emitEventToServer('join-room', { 
-            roomCode: roomCodeToJoin,
-            userId: this.socketClient.getUserIdentifier()
+            roomCode: roomCodeToJoin
         });
     }
 
     leaveCollaborativeRoom() {
         if (this.currentActiveRoomCode) {
             this.socketClient.emitEventToServer('leave-room', { 
-                roomCode: this.currentActiveRoomCode,
-                userId: this.socketClient.getUserIdentifier()
+                roomCode: this.currentActiveRoomCode
             });
             this.currentActiveRoomCode = null;
             this.updateRoomUserInterface();
@@ -98,10 +80,10 @@ class CollaborativeRoomManager {
         this.updateRoomUserInterface();
         this.showRoomNotification(`Room ${data.roomCode} created successfully!`);
         
-        // Update room code display
         const roomCodeDisplay = document.getElementById('room-code-display');
-        if (roomCodeDisplay) {
-            roomCodeDisplay.textContent = `Room Code: ${data.roomCode}`;
+        const currentRoomCode = document.getElementById('current-room-code');
+        if (roomCodeDisplay && currentRoomCode) {
+            currentRoomCode.textContent = data.roomCode;
             roomCodeDisplay.style.display = 'block';
         }
     }
@@ -111,39 +93,24 @@ class CollaborativeRoomManager {
         this.updateRoomUserInterface();
         this.showRoomNotification(`Joined room ${data.roomCode}`);
         
-        // Update room code display
         const roomCodeDisplay = document.getElementById('room-code-display');
-        if (roomCodeDisplay) {
-            roomCodeDisplay.textContent = `Room Code: ${data.roomCode}`;
+        const currentRoomCode = document.getElementById('current-room-code');
+        if (roomCodeDisplay && currentRoomCode) {
+            currentRoomCode.textContent = data.roomCode;
             roomCodeDisplay.style.display = 'block';
         }
         
-        // Clear and reinitialize with room data if provided
+        // Update with room data
         if (data.operations) {
             this.stateManager.setOperationsInList(data.operations);
         }
-    }
-
-    handleRoomUserJoined(data) {
-        this.stateManager.addUserToConnectedList(data.user);
-        this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
-        this.showRoomNotification(`User ${data.user.id} joined the room`);
-    }
-
-    handleRoomUserLeft(data) {
-        this.stateManager.removeUserFromConnectedList(data.userId);
-        this.uiController.removeRemoteUserCursor(data.userId);
-        this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
-        this.showRoomNotification(`User ${data.userId} left the room`);
-    }
-
-    handleRoomUsersUpdate(data) {
-        // Update user list with room-specific users
-        this.stateManager.connectedUsersList.clear();
-        data.users.forEach(user => {
-            this.stateManager.addUserToConnectedList(user);
-        });
-        this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        if (data.users) {
+            this.stateManager.connectedUsersList.clear();
+            data.users.forEach(user => {
+                this.stateManager.addUserToConnectedList(user);
+            });
+            this.uiController.updateOnlineUsersList(this.stateManager.getConnectedUsersList());
+        }
     }
 
     handleRoomError(data) {
@@ -152,7 +119,6 @@ class CollaborativeRoomManager {
     }
 
     generateRoomCode() {
-        // Generate a 6-character alphanumeric room code
         return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
 
@@ -170,10 +136,12 @@ class CollaborativeRoomManager {
         if (joinButtonElement) {
             if (this.currentActiveRoomCode) {
                 joinButtonElement.textContent = 'Leave Room';
-                joinButtonElement.className = 'btn btn-danger';
+                joinButtonElement.className = 'room-btn leave-btn';
+                joinButtonElement.onclick = () => this.leaveCollaborativeRoom();
             } else {
                 joinButtonElement.textContent = 'Join Room';
-                joinButtonElement.className = 'btn btn-primary';
+                joinButtonElement.className = 'room-btn join-btn';
+                joinButtonElement.onclick = () => this.joinCollaborativeRoom();
             }
         }
         
@@ -183,7 +151,6 @@ class CollaborativeRoomManager {
     }
 
     showRoomNotification(message) {
-        // Create a temporary notification
         const notification = document.createElement('div');
         notification.className = 'room-notification';
         notification.textContent = message;
@@ -193,15 +160,15 @@ class CollaborativeRoomManager {
             right: 20px;
             background: #4CAF50;
             color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 20px;
+            border-radius: 6px;
             z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             animation: slideIn 0.3s ease-out;
         `;
         
         document.body.appendChild(notification);
         
-        // Remove after 3 seconds
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease-in';
             setTimeout(() => {
@@ -212,24 +179,7 @@ class CollaborativeRoomManager {
         }, 3000);
     }
 
-    broadcastEventToCollaborativeRoom(eventNameString, eventDataObject) {
-        if (this.currentActiveRoomCode) {
-            this.socketClient.emitEventToServer('room-broadcast', {
-                roomCode: this.currentActiveRoomCode,
-                event: eventNameString,
-                data: eventDataObject
-            });
-        }
-    }
-
     getCurrentActiveRoom() {
         return this.currentActiveRoomCode;
-    }
-
-    getRoomInformationObject() {
-        return { 
-            currentRoom: this.currentActiveRoomCode,
-            users: this.stateManager.getConnectedUsersList()
-        };
     }
 }
