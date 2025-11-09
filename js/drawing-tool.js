@@ -8,16 +8,13 @@ class DrawingToolManager {
         this.isCurrentlyDrawing = false;
         this.lastRecordedPositionX = 0;
         this.lastRecordedPositionY = 0;
+        
+        console.log('✅ DrawingToolManager initialized');
     }
 
     switchToTool(toolName) {
         this.activeToolName = toolName;
-        
-        if (toolName === 'eraser') {
-            this.canvasElement.style.cursor = 'crosshair';
-        } else {
-            this.canvasElement.style.cursor = 'crosshair';
-        }
+        console.log('🔧 Tool switched to:', toolName);
     }
 
     setDrawingColor(color) {
@@ -61,8 +58,12 @@ class DrawingToolManager {
     }
 
     completeDrawing() {
+        if (!this.isCurrentlyDrawing) return;
+        
         this.isCurrentlyDrawing = false;
         this.canvasContext.beginPath();
         this.canvasContext.globalCompositeOperation = 'source-over';
     }
 }
+
+console.log('✅ drawing-tool.js loaded');
