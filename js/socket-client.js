@@ -1,6 +1,6 @@
 class SocketClient {
     constructor(serverUrl = '') {
-        // ✅ FIX: Use current origin for production, fallback for development
+        
         const url = serverUrl || window.location.origin;
         
         this.socket = io(url, {
@@ -50,7 +50,7 @@ class SocketClient {
         return this.socket.connected;
     }
 
-    // ✅ FIXED: Match server expected format
+    
     emitDrawStart(operation) {
         this.emit('draw-start', { 
             ...operation, 
