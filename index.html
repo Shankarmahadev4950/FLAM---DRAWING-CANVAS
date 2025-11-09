@@ -2,6 +2,92 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Drawing Canvas APP</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <h1>Drawing Canvas</h1>
+
+            <div class="header-right">
+
+                
+                <div class="users-online">
+                    👥 <span id="user-count">0</span> Online
+                </div>
+
+                <div class="status-badge">Connected</div>
+            </div>
+        </header>
+
+        <main>
+            <aside class="sidebar">
+                <div class="control-section">
+                    <h3>Tools</h3>
+                    <div class="tool-grid">
+                        <button class="tool-btn active" data-tool="brush"><span class="icon"></span><span>Brush</span></button>
+                        <button class="tool-btn" data-tool="eraser"><span class="icon"></span><span>Eraser</span></button>
+                        <button class="tool-btn" data-tool="line"><span class="icon"></span><span>Line</span></button>
+                        <button class="tool-btn" data-tool="rectangle"><span class="icon"></span><span>Rectangle</span></button>
+                        <button class="tool-btn" data-tool="circle"><span class="icon"></span><span>Circle</span></button>
+                        <button class="tool-btn" data-tool="text"><span class="icon"></span><span>Text</span></button>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>Color</h3>
+                    <input type="color" id="color-picker" value="#000000">
+                </div>
+
+                <div class="control-section">
+                    <h3>Brush Size</h3>
+                    <div class="slider-container">
+                        <input id="stroke-width" type="range" min="1" max="80" value="4">
+                        <div id="width-value">4px</div>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>Actions</h3>
+                    <div class="action-buttons">
+                        <button id="undo-btn" class="action-btn">↶ Undo</button>
+                        <button id="redo-btn" class="action-btn">↷ Redo</button>
+                        <button id="clear-btn" class="action-btn danger"> Clear</button>
+                        <button id="export-png" class="action-btn export"> Export PNG</button>
+                    </div>
+                </div>
+
+                
+                <div class="control-section performance-box">
+                    <h3>Performance</h3>
+                    <p> FPS: <b id="performance-fps">0</b></p>
+                    <p> Latency: <b id="performance-latency">0ms</b></p>
+                </div>
+            </aside>
+
+            <section class="canvas-section">
+                <div class="canvas-wrapper">
+                    <canvas id="drawing-canvas"></canvas>
+                </div>
+                <div class="canvas-footer">
+                    <div class="canvas-footer-text">
+                        <span></span>
+                        <span id="canvas-info">Ready to draw</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/drawing-tool.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collaborative Drawing</title>
     <link rel="stylesheet" href="./styles.css">
@@ -9,7 +95,7 @@
 <body>
     <div id="app">
         <header class="toolbar">
-            <h1>🎨 Collaborative Drawing</h1>
+            <h1> Collaborative Drawing</h1>
 
             <div class="tool-group">
                 <label>Tool:</label>
@@ -54,15 +140,15 @@
                 <button id="clear-btn" class="action-btn">Clear All</button>
             </div>
 
-            <!-- ✅ Added Online Users Counter -->
+        
             <div class="online-users-box">
                 👥 <span id="user-count">0</span> Users Online
             </div>
 
-            <!-- ✅ Added Performance Metrics -->
+          
             <div class="performance-box">
-                ⚡ FPS: <span id="performance-fps">0</span> |
-                📡 Latency: <span id="performance-latency">0ms</span>
+                 FPS: <span id="performance-fps">0</span> |
+                 Latency: <span id="performance-latency">0ms</span>
             </div>
 
             <div class="user-list" id="user-list">
@@ -90,3 +176,4 @@
     <script src="js/app.js"></script>
 </body>
 </html>
+
