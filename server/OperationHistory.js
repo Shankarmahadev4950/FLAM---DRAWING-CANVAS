@@ -1,53 +1,65 @@
 class OperationHistory {
     constructor() {
         this.operations = [];
-        this.undoStack = [];
-        this.maxHistory = 1000; // Limit history to prevent memory issues
+        this.currentIndex = -1;
+        this.maxOperations = 100;
+        console.log('📝 Operation History initialized');
     }
 
-    addOperation(operation) {
+    addOperation(data) {
+        const operation = {
+            id: this.generateId(),
+            data: data,
+            timestamp: Date.now()
+        };
+
+        this.operations = this.operations.slice(0, this.currentIndex + 1);
         this.operations.push(operation);
-        this.undoStack = [];
-        
-        // Limit history size
-        if (this.operations.length > this.maxHistory) {
-            this.operations.shift();
-        }
-    }
+        this.currentIndex++;
 
-    getActiveOperations() {
-        return this.operations;
+        if (this.operations.length > this.maxOperations) {
+            this.operations.shift();
+            this.currentIndex--;
+        }
+
+        return operation;
     }
 
     undo() {
-        if (this.operations.length === 0) return null;
-        const operation = this.operations.pop();
-        this.undoStack.push(operation);
-        return operation;
+        if (this.canUndo()) {
+            this.currentIndex--;
+            return true;
+        }
+        return false;
     }
 
     redo() {
-        if (this.undoStack.length === 0) return null;
-        const operation = this.undoStack.pop();
-        this.operations.push(operation);
-        return operation;
+        if (this.canRedo()) {
+            this.currentIndex++;
+            return true;
+        }
+        return false;
     }
 
     canUndo() {
-        return this.operations.length > 0;
+        return this.currentIndex >= 0;
     }
 
     canRedo() {
-        return this.undoStack.length > 0;
+        return this.currentIndex < this.operations.length - 1;
+    }
+
+    getOperations() {
+        return this.operations.slice(0, this.currentIndex + 1);
     }
 
     clear() {
         this.operations = [];
-        this.undoStack = [];
+        this.currentIndex = -1;
     }
 
-    getOperationCount() {
-        return this.operations.length;
+    generateId() {
+        return Math.random().toString(36).substring(2, 11);
     }
 }
 
