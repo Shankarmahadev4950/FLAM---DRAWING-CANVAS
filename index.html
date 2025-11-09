@@ -2,122 +2,282 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Real-time collaborative drawing canvas">
-    <title>Collaborative Drawing Canvas</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing Canvas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .user-count {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .status {
+            padding: 6px 16px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .status.disconnected {
+            background: #f44336;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 65px);
+        }
+
+        .sidebar {
+            width: 350px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            overflow-y: auto;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h3 {
+            color: #333;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .tools {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .tool-btn {
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .tool-btn:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .tool-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .color-picker {
+            width: 100%;
+            height: 60px;
+            border: 3px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .size-control {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #e0e0e0;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .size-value {
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .canvas-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        canvas {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .status-message {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 20px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .action-btn:hover {
+            background: #f5f5f5;
+            border-color: #667eea;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .clear-btn {
+            background: #f44336;
+            color: white;
+            border-color: #f44336;
+        }
+
+        .clear-btn:hover {
+            background: #d32f2f;
+        }
+    </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="header-content">
-            <h1 class="app-title">🎨 Drawing Canvas</h1>
-            <div class="header-info">
-                <div class="connection-status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Connecting...</span>
+    <div class="header">
+        <h1>Drawing Canvas</h1>
+        <div class="header-right">
+            <div class="user-count">
+                <span>👥</span>
+                <span id="online-count" class="online-count">0 Online</span>
+            </div>
+            <div id="status-indicator" class="status">Connecting...</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="section">
+                <h3>TOOLS</h3>
+                <div class="tools">
+                    <button class="tool-btn active" data-tool="brush">Brush</button>
+                    <button class="tool-btn" data-tool="eraser">Eraser</button>
                 </div>
-                <div class="user-count">
-                    <span class="online-count">0 Online</span>
+            </div>
+
+            <div class="section">
+                <h3>COLOR</h3>
+                <input type="color" id="color-picker" class="color-picker" value="#000000">
+            </div>
+
+            <div class="section">
+                <h3>BRUSH SIZE</h3>
+                <div class="size-control">
+                    <input type="range" id="brush-size" class="slider" min="1" max="50" value="4">
+                    <div class="size-value" id="size-value">4px</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>ACTIONS</h3>
+                <div class="action-buttons">
+                    <button class="action-btn" id="undo-btn" disabled>↶ Undo</button>
+                    <button class="action-btn" id="redo-btn" disabled>↷ Redo</button>
+                    <button class="action-btn clear-btn" id="clear-btn">🗑️ Clear All</button>
                 </div>
             </div>
         </div>
-    </header>
 
-    <!-- Main Container -->
-    <div class="container">
-        <!-- Toolbar -->
-        <aside class="toolbar">
-            <div class="toolbar-section">
-                <h3 class="toolbar-title">Tools</h3>
-                <div class="tool-buttons">
-                    <button class="tool-btn active" data-tool="brush" title="Brush">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
-                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
-                            <path d="M2 2l7.586 7.586"></path>
-                            <circle cx="11" cy="11" r="2"></circle>
-                        </svg>
-                        <span>Brush</span>
-                    </button>
-                    <button class="tool-btn" data-tool="eraser" title="Eraser">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 20H7L3 16 10 9 20 19Z"></path>
-                            <path d="M6 11L13 4 20 11"></path>
-                        </svg>
-                        <span>Eraser</span>
-                    </button>
-                </div>
-            </div>
-
-            <div class="toolbar-section">
-                <h3 class="toolbar-title">Color</h3>
-                <div class="color-picker-container">
-                    <input type="color" id="color-picker" value="#000000" class="color-input">
-                    <span class="color-label">Choose Color</span>
-                </div>
-            </div>
-
-            <div class="toolbar-section">
-                <h3 class="toolbar-title">Brush Size</h3>
-                <div class="size-control">
-                    <input type="range" id="brush-size" min="1" max="50" value="4" class="size-slider">
-                    <span id="size-display" class="size-value">4px</span>
-                </div>
-            </div>
-
-            <div class="toolbar-section">
-                <h3 class="toolbar-title">Actions</h3>
-                <div class="action-buttons">
-                    <button id="undo-btn" class="action-btn" title="Undo" disabled>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 7v6h6"></path>
-                            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path>
-                        </svg>
-                        Undo
-                    </button>
-                    <button id="redo-btn" class="action-btn" title="Redo" disabled>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 7v6h-6"></path>
-                            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path>
-                        </svg>
-                        Redo
-                    </button>
-                    <button id="clear-btn" class="action-btn danger" title="Clear All">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        Clear All
-                    </button>
-                </div>
-            </div>
-
-            <div class="toolbar-section">
-                <h3 class="toolbar-title">Online Users</h3>
-                <div id="user-list" class="user-list">
-                    <div class="user-item">
-                        <span class="user-dot" style="background: #4ECDC4;"></span>
-                        <span class="user-name">You</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Canvas -->
-        <main class="canvas-container">
-            <canvas id="drawing-canvas" class="drawing-canvas"></canvas>
-            <div class="canvas-overlay">
-                <div class="instructions">
-                    <p>🎨 Start drawing! Your friend will see it in real-time.</p>
-                    <p>Share this link with others to draw together!</p>
-                </div>
-            </div>
-        </main>
+        <div class="canvas-wrapper">
+            <canvas id="drawing-canvas"></canvas>
+            <div class="status-message" id="status-msg">Ready to draw</div>
+        </div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Socket.IO CDN -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- ONLY LOAD EACH SCRIPT ONCE -->
     <script src="js/drawing-tool.js"></script>
     <script src="js/socket-client.js"></script>
     <script src="js/canvas-manager.js"></script>
